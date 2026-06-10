@@ -550,16 +550,50 @@
       flex-wrap: wrap;
     }
 
-    .browse-player-fields {
-      display: grid;
-      gap: 8px;
+    .browse-player-combobox {
+      position: relative;
       min-width: min(320px, 100%);
     }
 
-    .browse-player-search input,
-    .browse-player-select select {
+    .browse-player-search input {
       min-width: 220px;
       width: 100%;
+    }
+
+    .browse-player-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #171b19;
+      box-shadow: var(--shadow);
+      z-index: 6;
+    }
+
+    .browse-player-menu button {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 10px 12px;
+      color: var(--text);
+    }
+
+    .browse-player-menu button:hover,
+    .browse-player-menu button.active {
+      background: rgba(242, 193, 78, .12);
+      color: var(--accent);
+    }
+
+    .browse-player-menu .empty {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: .88rem;
     }
 
     #browsePublicBtn {
@@ -876,13 +910,19 @@
       </div>
       <div id="playerSearchBar" class="player-search-bar hidden">
         <div class="browse-player-row">
-          <div class="browse-player-fields">
+          <div class="browse-player-combobox">
             <label class="browse-player-search">Search player
-              <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
+              <input
+                id="browsePlayerSearch"
+                type="search"
+                placeholder="Search or select a player..."
+                autocomplete="off"
+                role="combobox"
+                aria-expanded="false"
+                aria-controls="browsePlayerMenu"
+              />
             </label>
-            <label class="browse-player-select">Player
-              <select id="browsePlayerSelect"></select>
-            </label>
+            <div id="browsePlayerMenu" class="browse-player-menu hidden" role="listbox"></div>
           </div>
           <button id="viewMyStatsBtn" type="button" class="ghost hidden">Back to my stats</button>
         </div>
@@ -1236,10 +1276,12 @@
       viewMode: false,
       guestMode: false,
       browsePlayerFilter: "",
+      browseMenuIndex: -1,
       authMode: "login",
     };
     let serverSaveChain = Promise.resolve();
     let publicSiteUrl = "";
+    let browseMenuBlurTimer = null;
 
     const $ = (id) => document.getElementById(id);
     const today = new Date().toISOString().slice(0, 10);
@@ -1251,15 +1293,13 @@
       hideAuthOverlay();
       if (!state.guestMode) enterGuestHome();
     });
-    $("browsePlayerSelect").addEventListener("change", handleBrowsePlayerSelect);
     $("viewMyStatsBtn").addEventListener("click", leavePublicView);
     $("browsePlayerSearch").addEventListener("input", handleBrowsePlayerSearch);
-    $("browsePlayerSearch").addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      const match = browsePlayerOptions()[0];
-      if (match) viewPublicPlayer(match.id, { updateUrl: true });
-    });
+    $("browsePlayerSearch").addEventListener("focus", handleBrowsePlayerFocus);
+    $("browsePlayerSearch").addEventListener("blur", handleBrowsePlayerBlur);
+    $("browsePlayerSearch").addEventListener("keydown", handleBrowsePlayerSearchKeydown);
+    $("browsePlayerMenu").addEventListener("mousedown", (event) => event.preventDefault());
+    $("browsePlayerMenu").addEventListener("click", handleBrowsePlayerMenuClick);
     $("viewSignInBtn").addEventListener("click", () => openSignInOverlay());
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
@@ -1388,9 +1428,8 @@
         $("viewBanner").classList.toggle("hidden", !state.guestMode);
         $("statsTabBtn").textContent = state.guestMode ? "Player Stats" : "My Stats";
         $("viewSignInBtn").textContent = "Sign in to track your own matches";
-        $("browsePlayerSearch").value = state.user.name;
-        state.browsePlayerFilter = "";
-        populateBrowsePlayerSelect(userId);
+        setBrowsePlayerSearchValue(state.user.name);
+        closeBrowsePlayerMenu();
         updatePlayerSearchVisibility();
         updateTop10TabVisibility();
         hideAuthOverlay();
@@ -1429,9 +1468,8 @@
         document.body.classList.remove("view-mode");
         setGuestBannerMode("home");
         $("viewBanner").classList.remove("hidden");
-        $("browsePlayerSearch").value = "";
-        state.browsePlayerFilter = "";
-        populateBrowsePlayerSelect();
+        setBrowsePlayerSearchValue("");
+        closeBrowsePlayerMenu();
         $("statsTabBtn").textContent = "Player Stats";
         $("viewSignInBtn").textContent = "Sign in to track your own matches";
         if (options.updateUrl !== false) {
@@ -1466,52 +1504,126 @@
       return filtered.sort((a, b) => a.name.localeCompare(b.name));
     }
 
+    function setBrowsePlayerSearchValue(name = "") {
+      $("browsePlayerSearch").value = name;
+      state.browsePlayerFilter = "";
+      state.browseMenuIndex = -1;
+    }
+
+    function openBrowsePlayerMenu() {
+      $("browsePlayerMenu").classList.remove("hidden");
+      $("browsePlayerSearch").setAttribute("aria-expanded", "true");
+    }
+
+    function closeBrowsePlayerMenu() {
+      $("browsePlayerMenu").classList.add("hidden");
+      $("browsePlayerSearch").setAttribute("aria-expanded", "false");
+      state.browseMenuIndex = -1;
+      $("browsePlayerMenu").querySelectorAll("button.active").forEach((button) => {
+        button.classList.remove("active");
+      });
+    }
+
+    function renderBrowsePlayerMenu() {
+      const menu = $("browsePlayerMenu");
+      const users = browsePlayerOptions();
+      if (!users.length) {
+        const emptyText = state.browsePlayerFilter
+          ? `No players match "${escapeHtml(state.browsePlayerFilter)}"`
+          : "No public players available";
+        menu.innerHTML = `<div class="empty">${emptyText}</div>`;
+        openBrowsePlayerMenu();
+        return;
+      }
+      menu.innerHTML = users.map((user, index) => `
+        <button type="button" role="option" data-user-id="${escapeHtml(user.id)}" data-index="${index}">
+          ${escapeHtml(user.name)}
+        </button>
+      `).join("");
+      openBrowsePlayerMenu();
+      highlightBrowseMenuOption(state.browseMenuIndex);
+    }
+
+    function highlightBrowseMenuOption(index) {
+      const buttons = [...$("browsePlayerMenu").querySelectorAll("button[data-user-id]")];
+      buttons.forEach((button, buttonIndex) => {
+        button.classList.toggle("active", buttonIndex === index);
+      });
+      if (index >= 0 && buttons[index]) {
+        buttons[index].scrollIntoView({ block: "nearest" });
+      }
+    }
+
     function handleBrowsePlayerSearch() {
       state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
-      populateBrowsePlayerSelect(currentBrowseSelection());
+      state.browseMenuIndex = -1;
+      renderBrowsePlayerMenu();
     }
 
-    function currentBrowseSelection() {
-      if (state.viewMode && state.user?.id) return state.user.id;
-      if (state.accountUser?.id && !state.guestMode) return state.accountUser.id;
-      return state.user?.id || "";
+    function handleBrowsePlayerFocus() {
+      clearTimeout(browseMenuBlurTimer);
+      state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
+      renderBrowsePlayerMenu();
     }
 
-    function handleBrowsePlayerSelect() {
-      const userId = $("browsePlayerSelect").value;
-      if (!userId) return;
-      const selected = browsePlayerOptions().find((user) => user.id === userId)
-        || state.publicUsers.find((user) => user.id === userId);
-      if (selected) {
-        const displayName = selected.name.replace(/\s+\(You\)$/, "");
-        $("browsePlayerSearch").value = displayName;
-        state.browsePlayerFilter = "";
+    function handleBrowsePlayerBlur() {
+      browseMenuBlurTimer = setTimeout(closeBrowsePlayerMenu, 150);
+    }
+
+    function handleBrowsePlayerMenuClick(event) {
+      const button = event.target.closest("button[data-user-id]");
+      if (!button) return;
+      selectBrowsePlayer(button.dataset.userId, button.textContent.trim());
+    }
+
+    function handleBrowsePlayerSearchKeydown(event) {
+      const buttons = [...$("browsePlayerMenu").querySelectorAll("button[data-user-id]")];
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (!$("browsePlayerMenu").classList.contains("hidden")) {
+          state.browseMenuIndex = Math.min(state.browseMenuIndex + 1, buttons.length - 1);
+          highlightBrowseMenuOption(state.browseMenuIndex);
+        } else {
+          renderBrowsePlayerMenu();
+        }
+        return;
       }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (buttons.length) {
+          state.browseMenuIndex = Math.max(state.browseMenuIndex - 1, 0);
+          highlightBrowseMenuOption(state.browseMenuIndex);
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        closeBrowsePlayerMenu();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      if (state.browseMenuIndex >= 0 && buttons[state.browseMenuIndex]) {
+        const button = buttons[state.browseMenuIndex];
+        selectBrowsePlayer(button.dataset.userId, button.textContent.trim());
+        return;
+      }
+      const match = browsePlayerOptions()[0];
+      if (match) selectBrowsePlayer(match.id, match.name.replace(/\s+\(You\)$/, ""));
+    }
+
+    function selectBrowsePlayer(userId, displayName = "") {
+      if (!userId) return;
+      closeBrowsePlayerMenu();
+      const selected = browsePlayerOptions().find((user) => user.id === userId)
+        || state.publicUsers.find((user) => user.id === userId)
+        || (state.accountUser?.id === userId ? state.accountUser : null);
+      const name = displayName || selected?.name?.replace(/\s+\(You\)$/, "") || "";
+      setBrowsePlayerSearchValue(name);
       if (state.accountUser?.id === userId && !state.guestMode) {
         if (state.viewMode) leavePublicView();
         return;
       }
       viewPublicPlayer(userId, { updateUrl: true });
-    }
-
-    function populateBrowsePlayerSelect(selectedId = "") {
-      const select = $("browsePlayerSelect");
-      const currentId = selectedId || currentBrowseSelection();
-      const users = browsePlayerOptions();
-      if (!state.publicUsers.length && !state.accountUser) {
-        select.innerHTML = `<option value="">No public players</option>`;
-        return;
-      }
-      if (!users.length) {
-        select.innerHTML = `<option value="">No players match "${escapeHtml(state.browsePlayerFilter)}"</option>`;
-        return;
-      }
-      select.innerHTML = users
-        .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}</option>`)
-        .join("");
-      if (currentId && users.some((user) => user.id === currentId)) {
-        select.value = currentId;
-      }
     }
 
     function updatePlayerSearchVisibility() {
@@ -1539,8 +1651,8 @@
       state.matches = [];
       document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
-      $("browsePlayerSearch").value = "";
-      state.browsePlayerFilter = "";
+      setBrowsePlayerSearchValue("");
+      closeBrowsePlayerMenu();
       $("statsTabBtn").textContent = "My Stats";
       updatePlayerSearchVisibility();
       updateTop10TabVisibility();
@@ -1649,8 +1761,8 @@
       state.guestMode = false;
       document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
-      $("browsePlayerSearch").value = "";
-      state.browsePlayerFilter = "";
+      setBrowsePlayerSearchValue(state.user.name);
+      closeBrowsePlayerMenu();
       $("statsTabBtn").textContent = "My Stats";
       state.accountUser = state.user;
       updatePlayerSearchVisibility();
@@ -1666,7 +1778,6 @@
         await syncMatchesFromServer(localMatches);
         await loadPublicUsers();
         state.compareCache = {};
-        populateBrowsePlayerSelect(state.accountUser?.id);
         populateCompareSelects();
         render();
       } catch {
