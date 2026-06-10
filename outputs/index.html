@@ -430,7 +430,13 @@
       padding: 0 9px;
       font-size: .78rem;
     }
-    .hidden { display: none !important; }
+    .hidden,
+    .auth-overlay.hidden,
+    .app.hidden,
+    .admin-panel.hidden,
+    #playerMain.hidden {
+      display: none !important;
+    }
     input[type="file"] { display: none; }
 
     .auth-overlay {
@@ -1156,14 +1162,22 @@
     }
 
     function showAuthOverlay() {
-      $("authOverlay").classList.remove("hidden");
-      $("appRoot").classList.add("hidden");
+      const overlay = $("authOverlay");
+      const app = $("appRoot");
+      overlay.classList.remove("hidden");
+      overlay.style.display = "grid";
+      app.classList.add("hidden");
+      app.style.display = "none";
       $("authError").textContent = "";
     }
 
     function hideAuthOverlay() {
-      $("authOverlay").classList.add("hidden");
-      $("appRoot").classList.remove("hidden");
+      const overlay = $("authOverlay");
+      const app = $("appRoot");
+      overlay.classList.add("hidden");
+      overlay.style.display = "none";
+      app.classList.remove("hidden");
+      app.style.display = "grid";
     }
 
     function setAuthMode(mode) {
@@ -1211,6 +1225,7 @@
         state.user = payload.user;
         localStorage.setItem(sessionKey, state.token);
         $("authForm").reset();
+        hideAuthOverlay();
         await enterApp();
       } catch (error) {
         $("authError").textContent = error.message || "Authentication failed";
@@ -1231,7 +1246,11 @@
       state.matches = loadMatches();
       restoreDraft();
       render();
-      await Promise.all([loadServerMatches(), loadPublicUsers()]);
+      try {
+        await Promise.all([loadServerMatches(), loadPublicUsers()]);
+      } catch {
+        showSaveStatus("Signed in. Server sync will retry on next save.", "error");
+      }
     }
 
     function openAdminPanel() {
