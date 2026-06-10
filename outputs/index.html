@@ -563,8 +563,20 @@
       display: none !important;
     }
 
-    body.view-mode main {
+    body.view-mode main,
+    body.guest-mode main {
       grid-template-columns: 1fr;
+    }
+
+    body.view-mode main .dashboard,
+    body.guest-mode main .dashboard {
+      grid-column: 1 / -1;
+    }
+
+    .player-search-bar {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 0 18px 14px;
     }
 
     .admin-panel {
@@ -852,17 +864,18 @@
       <div id="viewBanner" class="view-banner hidden">
         <span id="viewBannerHome" class="hidden">Browse public player stats, explore the Top 10, or pick a player below.</span>
         <span id="viewBannerPlayer">Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
-        <div id="browsePlayerWrap" class="browse-player hidden">
-          <div class="browse-player-row">
-            <label class="browse-player-search">Search player
-              <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
-            </label>
-            <label>Player
-              <select id="browsePlayerSelect"></select>
-            </label>
-          </div>
-        </div>
         <button id="viewSignInBtn" type="button" class="primary">Sign in to track your own matches</button>
+      </div>
+      <div id="playerSearchBar" class="player-search-bar hidden">
+        <div class="browse-player-row">
+          <label class="browse-player-search">Search player
+            <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
+          </label>
+          <label>Player
+            <select id="browsePlayerSelect"></select>
+          </label>
+          <button id="viewMyStatsBtn" type="button" class="ghost hidden">Back to my stats</button>
+        </div>
       </div>
       <div class="account-bar owner-only">
         <div class="user-pill">Signed in as <strong id="currentUserName">Player</strong></div>
@@ -1209,6 +1222,7 @@
       publicMatches: [],
       adminUsers: [],
       compareCache: {},
+      accountUser: null,
       viewMode: false,
       guestMode: false,
       browsePlayerFilter: "",
@@ -1227,27 +1241,16 @@
       hideAuthOverlay();
       if (!state.guestMode) enterGuestHome();
     });
-    $("browsePlayerSelect").addEventListener("change", () => {
-      const userId = $("browsePlayerSelect").value;
-      const selected = state.publicUsers.find((user) => user.id === userId);
-      if (selected) $("browsePlayerSearch").value = selected.name;
-      state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
-      if (userId) viewPublicPlayer(userId, { updateUrl: true });
-    });
+    $("browsePlayerSelect").addEventListener("change", handleBrowsePlayerSelect);
+    $("viewMyStatsBtn").addEventListener("click", leavePublicView);
     $("browsePlayerSearch").addEventListener("input", handleBrowsePlayerSearch);
     $("browsePlayerSearch").addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
-      const match = filteredPublicUsers()[0];
+      const match = browsePlayerOptions()[0];
       if (match) viewPublicPlayer(match.id, { updateUrl: true });
     });
-    $("viewSignInBtn").addEventListener("click", () => {
-      if (state.token) {
-        leavePublicView();
-      } else {
-        openSignInOverlay();
-      }
-    });
+    $("viewSignInBtn").addEventListener("click", () => openSignInOverlay());
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
     $("copyShareBtn").addEventListener("click", copyShareLink);
@@ -1372,17 +1375,13 @@
         $("viewBannerName").textContent = state.user.name;
         $("viewBannerHome").classList.add("hidden");
         $("viewBannerPlayer").classList.remove("hidden");
-        $("viewBanner").classList.remove("hidden");
-        $("browsePlayerWrap").classList.toggle("hidden", !state.guestMode);
+        $("viewBanner").classList.toggle("hidden", !state.guestMode);
         $("statsTabBtn").textContent = state.guestMode ? "Player Stats" : "My Stats";
-        $("viewSignInBtn").textContent = state.token
-          ? "Back to my stats"
-          : "Sign in to track your own matches";
-        if (state.guestMode) {
-          $("browsePlayerSearch").value = state.user.name;
-          state.browsePlayerFilter = "";
-        }
+        $("viewSignInBtn").textContent = "Sign in to track your own matches";
+        $("browsePlayerSearch").value = state.user.name;
+        state.browsePlayerFilter = "";
         populateBrowsePlayerSelect(userId);
+        updatePlayerSearchVisibility();
         updateTop10TabVisibility();
         hideAuthOverlay();
         openStatsTab();
@@ -1393,7 +1392,7 @@
         state.guestMode = false;
         document.body.classList.remove("view-mode", "guest-mode");
         $("viewBanner").classList.add("hidden");
-        $("browsePlayerWrap").classList.add("hidden");
+        updatePlayerSearchVisibility();
         await enterGuestHome();
         openSignInOverlay(error.message || "Could not load shared profile.");
       }
@@ -1420,7 +1419,6 @@
         document.body.classList.remove("view-mode");
         setGuestBannerMode("home");
         $("viewBanner").classList.remove("hidden");
-        $("browsePlayerWrap").classList.remove("hidden");
         $("browsePlayerSearch").value = "";
         state.browsePlayerFilter = "";
         populateBrowsePlayerSelect();
@@ -1429,6 +1427,7 @@
         if (options.updateUrl !== false) {
           history.replaceState({}, "", `${location.pathname}?browse=1`);
         }
+        updatePlayerSearchVisibility();
         updateTop10TabVisibility();
         hideAuthOverlay();
         state.compareCache = {};
@@ -1440,23 +1439,56 @@
       }
     }
 
-    function filteredPublicUsers() {
+    function browsePlayerOptions() {
       const query = (state.browsePlayerFilter || "").trim().toLowerCase();
-      const users = state.publicUsers || [];
-      if (!query) return users;
-      return users.filter((user) => user.name.toLowerCase().includes(query));
+      const users = (state.publicUsers || []).map((user) => ({ ...user }));
+      if (state.accountUser && !state.guestMode) {
+        const selfIndex = users.findIndex((user) => user.id === state.accountUser.id);
+        if (selfIndex >= 0) {
+          users[selfIndex] = { ...users[selfIndex], name: `${state.accountUser.name} (You)` };
+        } else {
+          users.unshift({ ...state.accountUser, name: `${state.accountUser.name} (You)` });
+        }
+      }
+      const filtered = query
+        ? users.filter((user) => user.name.toLowerCase().includes(query))
+        : users;
+      return filtered.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     function handleBrowsePlayerSearch() {
       state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
-      populateBrowsePlayerSelect(state.user?.id);
+      populateBrowsePlayerSelect(currentBrowseSelection());
+    }
+
+    function currentBrowseSelection() {
+      if (state.viewMode && state.user?.id) return state.user.id;
+      if (state.accountUser?.id && !state.guestMode) return state.accountUser.id;
+      return state.user?.id || "";
+    }
+
+    function handleBrowsePlayerSelect() {
+      const userId = $("browsePlayerSelect").value;
+      if (!userId) return;
+      const selected = browsePlayerOptions().find((user) => user.id === userId)
+        || state.publicUsers.find((user) => user.id === userId);
+      if (selected) {
+        const displayName = selected.name.replace(/\s+\(You\)$/, "");
+        $("browsePlayerSearch").value = displayName;
+        state.browsePlayerFilter = "";
+      }
+      if (state.accountUser?.id === userId && !state.guestMode) {
+        if (state.viewMode) leavePublicView();
+        return;
+      }
+      viewPublicPlayer(userId, { updateUrl: true });
     }
 
     function populateBrowsePlayerSelect(selectedId = "") {
       const select = $("browsePlayerSelect");
-      const currentId = selectedId || state.user?.id || "";
-      const users = filteredPublicUsers();
-      if (!state.publicUsers.length) {
+      const currentId = selectedId || currentBrowseSelection();
+      const users = browsePlayerOptions();
+      if (!state.publicUsers.length && !state.accountUser) {
         select.innerHTML = `<option value="">No public players</option>`;
         return;
       }
@@ -1470,6 +1502,12 @@
       if (currentId && users.some((user) => user.id === currentId)) {
         select.value = currentId;
       }
+    }
+
+    function updatePlayerSearchVisibility() {
+      const show = state.guestMode || Boolean(state.token);
+      $("playerSearchBar").classList.toggle("hidden", !show);
+      $("viewMyStatsBtn").classList.toggle("hidden", !(state.token && state.viewMode && !state.guestMode));
     }
 
     function viewPublicPlayer(userId, options = {}) {
@@ -1491,10 +1529,10 @@
       state.matches = [];
       document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
-      $("browsePlayerWrap").classList.add("hidden");
       $("browsePlayerSearch").value = "";
       state.browsePlayerFilter = "";
       $("statsTabBtn").textContent = "My Stats";
+      updatePlayerSearchVisibility();
       updateTop10TabVisibility();
       initApp();
     }
@@ -1580,6 +1618,7 @@
         }
         state.token = payload.token;
         state.user = payload.user;
+        state.accountUser = payload.user;
         localStorage.setItem(sessionKey, state.token);
         $("authForm").reset();
         $("authError").textContent = state.authMode === "register"
@@ -1600,10 +1639,11 @@
       state.guestMode = false;
       document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
-      $("browsePlayerWrap").classList.add("hidden");
       $("browsePlayerSearch").value = "";
       state.browsePlayerFilter = "";
       $("statsTabBtn").textContent = "My Stats";
+      state.accountUser = state.user;
+      updatePlayerSearchVisibility();
       updateTop10TabVisibility();
       hideAuthOverlay();
       openStatsTab();
@@ -1616,6 +1656,7 @@
         await syncMatchesFromServer(localMatches);
         await loadPublicUsers();
         state.compareCache = {};
+        populateBrowsePlayerSelect(state.accountUser?.id);
         populateCompareSelects();
         render();
       } catch {
@@ -1749,9 +1790,9 @@
     function comparePlayerOptions() {
       const options = [];
       const seen = new Set();
-      if (state.user && !state.viewMode) {
-        options.push({ id: state.user.id, name: `${state.user.name} (You)` });
-        seen.add(state.user.id);
+      if (state.accountUser && !state.guestMode) {
+        options.push({ id: state.accountUser.id, name: `${state.accountUser.name} (You)` });
+        seen.add(state.accountUser.id);
       }
       (state.publicUsers || []).forEach((user) => {
         if (seen.has(user.id)) return;
@@ -2088,6 +2129,7 @@
     function clearSession() {
       state.token = "";
       state.user = null;
+      state.accountUser = null;
       localStorage.removeItem(sessionKey);
     }
 
