@@ -434,6 +434,7 @@
     .auth-overlay.hidden,
     .app.hidden,
     .admin-panel.hidden,
+    .compare-panel.hidden,
     #playerMain.hidden {
       display: none !important;
     }
@@ -622,6 +623,101 @@
       }
     }
 
+    .app-tabs {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 0 18px 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .app-tabs .tab {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111411;
+      color: var(--muted);
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    .app-tabs .tab.active {
+      color: var(--ink);
+      background: var(--accent);
+      border-color: #f2c14e;
+      font-weight: 700;
+    }
+
+    .compare-panel {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .compare-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(23, 27, 25, .95);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .compare-card h3 {
+      margin: 0;
+      color: var(--accent);
+    }
+
+    .compare-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .compare-winner {
+      border-color: #5ec88c;
+      box-shadow: 0 0 0 1px rgba(94, 200, 140, .25);
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: .86rem;
+      text-align: left;
+    }
+
+    .compare-table th {
+      color: var(--muted);
+    }
+
+    .better {
+      color: #9df0bd;
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      .compare-grid,
+      .compare-metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 1100px) {
       main {
         grid-template-columns: 1fr;
@@ -730,6 +826,10 @@
         <button id="adminBtn" type="button" class="hidden">Admin</button>
         <button id="logoutBtn" type="button" class="ghost">Log Out</button>
       </div>
+      <nav class="app-tabs" aria-label="Dashboard tabs">
+        <button id="statsTabBtn" type="button" class="tab active">My Stats</button>
+        <button id="compareTabBtn" type="button" class="tab">Compare</button>
+      </nav>
     </header>
 
     <section id="adminPanel" class="admin-panel hidden" aria-label="Admin dashboard">
@@ -786,6 +886,26 @@
           </thead>
           <tbody id="adminUserRows"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="comparePanel" class="compare-panel hidden" aria-label="Compare players">
+      <div>
+        <h2>Compare Players</h2>
+        <p class="subhead">Put two players side by side. Public profiles and your own account can be compared.</p>
+      </div>
+      <div class="grid-2">
+        <label>Player A
+          <select id="comparePlayerA"></select>
+        </label>
+        <label>Player B
+          <select id="comparePlayerB"></select>
+        </label>
+      </div>
+      <div id="compareCards" class="compare-grid"></div>
+      <div class="admin-box">
+        <h2>Head to Head</h2>
+        <div id="compareHeadToHead"></div>
       </div>
     </section>
 
@@ -1045,6 +1165,7 @@
       publicUsers: [],
       publicMatches: [],
       adminUsers: [],
+      compareCache: {},
       viewMode: false,
       authMode: "login",
     };
@@ -1062,6 +1183,10 @@
     $("adminBtn").addEventListener("click", openAdminPanel);
     $("adminBackBtn").addEventListener("click", closeAdminPanel);
     $("adminCreateForm").addEventListener("submit", adminCreateUser);
+    $("statsTabBtn").addEventListener("click", openStatsTab);
+    $("compareTabBtn").addEventListener("click", openCompareTab);
+    $("comparePlayerA").addEventListener("change", renderCompare);
+    $("comparePlayerB").addEventListener("change", renderCompare);
     $("matchForm").addEventListener("submit", saveMatch);
     $("resetBtn").addEventListener("click", resetForm);
     $("clearBtn").addEventListener("click", clearMatches);
@@ -1143,6 +1268,7 @@
         $("viewBanner").classList.remove("hidden");
         hideAuthOverlay();
         render();
+        populateCompareSelects();
       } catch (error) {
         state.viewMode = false;
         document.body.classList.remove("view-mode");
@@ -1248,6 +1374,8 @@
       render();
       try {
         await Promise.all([loadServerMatches(), loadPublicUsers()]);
+        state.compareCache = {};
+        populateCompareSelects();
       } catch {
         showSaveStatus("Signed in. Server sync will retry on next save.", "error");
       }
@@ -1256,6 +1384,7 @@
     function openAdminPanel() {
       if (state.user?.role !== "admin") return;
       $("playerMain").classList.add("hidden");
+      $("comparePanel").classList.add("hidden");
       $("adminPanel").classList.remove("hidden");
       loadAdminDashboard();
     }
@@ -1263,6 +1392,190 @@
     function closeAdminPanel() {
       $("adminPanel").classList.add("hidden");
       $("playerMain").classList.remove("hidden");
+      $("comparePanel").classList.add("hidden");
+      setActiveTab("stats");
+    }
+
+    function setActiveTab(tab) {
+      $("statsTabBtn").classList.toggle("active", tab === "stats");
+      $("compareTabBtn").classList.toggle("active", tab === "compare");
+    }
+
+    function openStatsTab() {
+      $("adminPanel").classList.add("hidden");
+      $("comparePanel").classList.add("hidden");
+      $("playerMain").classList.remove("hidden");
+      setActiveTab("stats");
+    }
+
+    function openCompareTab() {
+      $("adminPanel").classList.add("hidden");
+      $("playerMain").classList.add("hidden");
+      $("comparePanel").classList.remove("hidden");
+      setActiveTab("compare");
+      populateCompareSelects();
+      renderCompare();
+    }
+
+    function comparePlayerOptions() {
+      const options = [];
+      const seen = new Set();
+      if (state.user && !state.viewMode) {
+        options.push({ id: state.user.id, name: `${state.user.name} (You)` });
+        seen.add(state.user.id);
+      }
+      (state.publicUsers || []).forEach((user) => {
+        if (seen.has(user.id)) return;
+        options.push({ id: user.id, name: user.name });
+        seen.add(user.id);
+      });
+      return options.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function populateCompareSelects() {
+      const options = comparePlayerOptions();
+      const markup = options.length
+        ? options.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}</option>`).join("")
+        : `<option value="">No players available</option>`;
+      $("comparePlayerA").innerHTML = markup;
+      $("comparePlayerB").innerHTML = markup;
+      if (options.length > 1) {
+        $("comparePlayerB").selectedIndex = 1;
+      }
+    }
+
+    async function loadCompareMatches(userId) {
+      if (!userId) return [];
+      if (state.compareCache[userId]) return state.compareCache[userId];
+      if (state.user?.id === userId && Array.isArray(state.matches)) {
+        state.compareCache[userId] = state.matches;
+        return state.matches;
+      }
+      try {
+        const response = state.user?.id === userId
+          ? await apiFetch(`/api/matches?userId=${encodeURIComponent(userId)}`, { cache: "no-store" })
+          : await fetch(`/api/matches?userId=${encodeURIComponent(userId)}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Could not load player stats");
+        const matches = await response.json();
+        state.compareCache[userId] = Array.isArray(matches) ? matches : [];
+        return state.compareCache[userId];
+      } catch {
+        return [];
+      }
+    }
+
+    function playerSnapshot(name, matches) {
+      const wins = matches.filter((match) => match.result === "Win").length;
+      const losses = matches.filter((match) => match.result === "Loss").length;
+      const draws = matches.length - wins - losses;
+      const total = matches.length;
+      return {
+        name,
+        matches: total,
+        winRate: total ? wins / total : 0,
+        record: `${wins}-${losses}-${draws}`,
+        avgKd: total ? matches.reduce((sum, match) => sum + kd(match), 0) / total : 0,
+        avgScore: Math.round(average(matches, "score")),
+        avgApm: Math.round(average(matches, "apm")),
+        avgObjective: Math.round(average(matches, "objective")),
+        avgDuration: Math.round(average(matches, "duration")),
+      };
+    }
+
+    function renderCompareCard(snapshot, highlight = false) {
+      return `
+        <div class="compare-card ${highlight ? "compare-winner" : ""}">
+          <h3>${escapeHtml(snapshot.name)}</h3>
+          <div class="compare-metrics">
+            ${statCard("Matches", snapshot.matches)}
+            ${statCard("Win Rate", pct(snapshot.winRate))}
+            ${statCard("Record", snapshot.record)}
+            ${statCard("Avg K/D", snapshot.avgKd.toFixed(2))}
+            ${statCard("Avg Score", snapshot.avgScore)}
+            ${statCard("Avg APM", snapshot.avgApm)}
+            ${statCard("Avg Objective", `${snapshot.avgObjective}%`)}
+            ${statCard("Avg Duration", `${snapshot.avgDuration}m`)}
+          </div>
+        </div>
+      `;
+    }
+
+    function compareRow(label, leftValue, rightValue, betterSide) {
+      return `
+        <tr>
+          <th>${escapeHtml(label)}</th>
+          <td class="${betterSide === "left" ? "better" : ""}">${escapeHtml(leftValue)}</td>
+          <td class="${betterSide === "right" ? "better" : ""}">${escapeHtml(rightValue)}</td>
+        </tr>
+      `;
+    }
+
+    async function renderCompare() {
+      const leftId = $("comparePlayerA").value;
+      const rightId = $("comparePlayerB").value;
+      const options = comparePlayerOptions();
+      const leftName = options.find((user) => user.id === leftId)?.name || "Player A";
+      const rightName = options.find((user) => user.id === rightId)?.name || "Player B";
+
+      if (!leftId || !rightId) {
+        $("compareCards").innerHTML = `<div class="muted">Select two players to compare.</div>`;
+        $("compareHeadToHead").innerHTML = "";
+        return;
+      }
+
+      if (leftId === rightId) {
+        $("compareCards").innerHTML = `<div class="muted">Choose two different players.</div>`;
+        $("compareHeadToHead").innerHTML = "";
+        return;
+      }
+
+      const [leftMatches, rightMatches] = await Promise.all([
+        loadCompareMatches(leftId),
+        loadCompareMatches(rightId),
+      ]);
+      const left = playerSnapshot(leftName, leftMatches);
+      const right = playerSnapshot(rightName, rightMatches);
+      const leftWins = [
+        left.winRate > right.winRate,
+        left.avgKd > right.avgKd,
+        left.avgScore > right.avgScore,
+        left.avgApm > right.avgApm,
+        left.avgObjective > right.avgObjective,
+      ].filter(Boolean).length;
+      const rightWins = [
+        right.winRate > left.winRate,
+        right.avgKd > left.avgKd,
+        right.avgScore > left.avgScore,
+        right.avgApm > left.avgApm,
+        right.avgObjective > left.avgObjective,
+      ].filter(Boolean).length;
+
+      $("compareCards").innerHTML = [
+        renderCompareCard(left, leftWins > rightWins),
+        renderCompareCard(right, rightWins > leftWins),
+      ].join("");
+
+      $("compareHeadToHead").innerHTML = `
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>${escapeHtml(left.name)}</th>
+              <th>${escapeHtml(right.name)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${compareRow("Matches", left.matches, right.matches, left.matches > right.matches ? "left" : right.matches > left.matches ? "right" : "")}
+            ${compareRow("Win Rate", pct(left.winRate), pct(right.winRate), left.winRate > right.winRate ? "left" : right.winRate > left.winRate ? "right" : "")}
+            ${compareRow("Record", left.record, right.record, "")}
+            ${compareRow("Avg K/D", left.avgKd.toFixed(2), right.avgKd.toFixed(2), left.avgKd > right.avgKd ? "left" : right.avgKd > left.avgKd ? "right" : "")}
+            ${compareRow("Avg Score", left.avgScore, right.avgScore, left.avgScore > right.avgScore ? "left" : right.avgScore > left.avgScore ? "right" : "")}
+            ${compareRow("Avg APM", left.avgApm, right.avgApm, left.avgApm > right.avgApm ? "left" : right.avgApm > left.avgApm ? "right" : "")}
+            ${compareRow("Avg Objective", `${left.avgObjective}%`, `${right.avgObjective}%`, left.avgObjective > right.avgObjective ? "left" : right.avgObjective > left.avgObjective ? "right" : "")}
+            ${compareRow("Avg Duration", `${left.avgDuration}m`, `${right.avgDuration}m`, left.avgDuration < right.avgDuration ? "left" : right.avgDuration < left.avgDuration ? "right" : "")}
+          </tbody>
+        </table>
+      `;
     }
 
     async function loadAdminDashboard() {
