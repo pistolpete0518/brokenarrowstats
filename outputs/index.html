@@ -1333,12 +1333,21 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
         });
-        const payload = await response.json();
+        let payload = {};
+        try {
+          payload = await response.json();
+        } catch {
+          throw new Error("Server error while saving account. Please try again.");
+        }
         if (!response.ok) throw new Error(payload.error || "Authentication failed");
         state.token = payload.token;
         state.user = payload.user;
         localStorage.setItem(sessionKey, state.token);
         $("authForm").reset();
+        $("authError").textContent = state.authMode === "register"
+          ? `Account created for ${state.user.name}. Loading dashboard...`
+          : "";
+        $("authError").className = state.authMode === "register" ? "save-status ok" : "auth-error";
         hideAuthOverlay();
         await enterApp();
       } catch (error) {
@@ -1806,7 +1815,11 @@
     async function loadServerMatches() {
       if (!state.user) return;
       try {
-        const response = await apiFetch(`${serverSaveUrl}?userId=${encodeURIComponent(state.user.id)}`, { cache: "no-store" });
+        const response = await fetch(`${serverSaveUrl}?userId=${encodeURIComponent(state.user.id)}`, {
+          cache: "no-store",
+          headers: authHeaders(),
+        });
+        if (response.status === 401) return;
         if (!response.ok) return;
         const serverMatches = await response.json();
         if (!Array.isArray(serverMatches)) return;

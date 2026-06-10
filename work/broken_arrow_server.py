@@ -2,10 +2,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import base64
+import copy
 import hashlib
 import json
 import os
 import secrets
+import threading
 import time
 import uuid
 
@@ -15,6 +17,7 @@ OLD_DATA_FILE = ROOT / "broken-arrow-data.json"
 DB_FILE = ROOT / "broken-arrow-db.json"
 SESSION_DAYS = 30
 PBKDF2_ROUNDS = 120_000
+_DB_LOCK = threading.Lock()
 
 
 def now():
@@ -29,16 +32,19 @@ def default_db():
     }
 
 
-def read_db():
-    if DB_FILE.exists():
+def _load_db_raw():
+    ROOT.mkdir(parents=True, exist_ok=True)
+    candidates = [DB_FILE, DB_FILE.with_suffix(".json.bak")]
+    for path in candidates:
+        if not path.exists():
+            continue
         try:
-            data = json.loads(DB_FILE.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict) and isinstance(data.get("users"), list) and isinstance(data.get("matches"), list):
                 data.setdefault("sessions", {})
-                ensure_admin_user(data)
                 return data
         except Exception:
-            pass
+            continue
 
     db = default_db()
     if OLD_DATA_FILE.exists():
@@ -52,13 +58,39 @@ def read_db():
                         db["matches"].append(match)
         except Exception:
             pass
-    ensure_admin_user(db)
-    write_db(db)
     return db
 
 
+def _save_db_raw(db):
+    ROOT.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(db, indent=2)
+    temp_file = DB_FILE.with_suffix(".json.tmp")
+    temp_file.write_text(payload, encoding="utf-8")
+    if DB_FILE.exists():
+        backup_file = DB_FILE.with_suffix(".json.bak")
+        backup_file.write_text(DB_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+    os.replace(temp_file, DB_FILE)
+
+
+def read_db():
+    with _DB_LOCK:
+        db = _load_db_raw()
+        ensure_admin_user(db)
+        return copy.deepcopy(db)
+
+
+def update_db(mutator):
+    with _DB_LOCK:
+        db = _load_db_raw()
+        ensure_admin_user(db)
+        result = mutator(db)
+        _save_db_raw(db)
+        return result
+
+
 def write_db(db):
-    DB_FILE.write_text(json.dumps(db, indent=2), encoding="utf-8")
+    with _DB_LOCK:
+        _save_db_raw(db)
 
 
 def hash_password(password, salt=None):
@@ -152,7 +184,7 @@ def get_session_user(db, token):
 def ensure_admin_user(db):
     admin_name = os.environ.get("ADMIN_USERNAME", "").strip()
     if not admin_name:
-        return
+        return False
 
     admin_password = os.environ.get("ADMIN_PASSWORD", "").strip()
     user = find_user_by_name(db, admin_name)
@@ -183,8 +215,7 @@ def ensure_admin_user(db):
         })
         changed = True
 
-    if changed:
-        write_db(db)
+    return changed
 
 
 def build_user(body, existing=None):
@@ -346,89 +377,107 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         body = self.read_json()
-        db = read_db()
+        token = self.get_auth_token()
 
         try:
             if path == "/api/auth/register":
-                name = str(body.get("username") or body.get("name", "")).strip()[:48]
-                password = str(body.get("password", ""))
-                if not name:
-                    raise ValueError("Username is required")
-                if len(password) < 6:
-                    raise ValueError("Password must be at least 6 characters")
-                if find_user_by_name(db, name):
-                    raise ValueError("Username already exists")
-                user = build_user(body)
-                user["role"] = "user"
-                db["users"].append(user)
-                token = create_session(db, user["id"])
-                write_db(db)
-                self.send_json({"token": token, "user": sanitize_user(user)})
+                def mutate(db):
+                    name = str(body.get("username") or body.get("name", "")).strip()[:48]
+                    password = str(body.get("password", ""))
+                    if not name:
+                        raise ValueError("Username is required")
+                    if len(password) < 6:
+                        raise ValueError("Password must be at least 6 characters")
+                    if find_user_by_name(db, name):
+                        raise ValueError("Username already exists")
+                    user = build_user(body)
+                    user["role"] = "user"
+                    db["users"].append(user)
+                    session_token = create_session(db, user["id"])
+                    return {"token": session_token, "user": sanitize_user(user)}
+
+                self.send_json(update_db(mutate))
                 return
 
             if path == "/api/auth/login":
-                name = str(body.get("username") or body.get("name", "")).strip()
-                password = str(body.get("password", ""))
-                user = find_user_by_name(db, name)
-                if not user or not verify_password(password, user.get("passwordSalt", ""), user.get("passwordHash", "")):
-                    raise ValueError("Invalid username or password")
-                token = create_session(db, user["id"])
-                write_db(db)
-                self.send_json({"token": token, "user": sanitize_user(user)})
+                def mutate(db):
+                    name = str(body.get("username") or body.get("name", "")).strip()
+                    password = str(body.get("password", ""))
+                    user = find_user_by_name(db, name)
+                    if not user or not verify_password(password, user.get("passwordSalt", ""), user.get("passwordHash", "")):
+                        raise ValueError("Invalid username or password")
+                    session_token = create_session(db, user["id"])
+                    return {"token": session_token, "user": sanitize_user(user)}
+
+                self.send_json(update_db(mutate))
                 return
 
             if path == "/api/auth/logout":
-                token = self.get_auth_token()
-                if token and token in db.get("sessions", {}):
-                    db["sessions"].pop(token, None)
-                    write_db(db)
-                self.send_json({"ok": True})
-                return
+                def mutate(db):
+                    if token and token in db.get("sessions", {}):
+                        db["sessions"].pop(token, None)
+                    return {"ok": True}
 
-            auth_user = self.get_auth_user(db)
-            if not auth_user:
-                self.send_error(401)
+                self.send_json(update_db(mutate))
                 return
 
             if path == "/api/users/public":
-                public = bool(body.get("public", True))
-                auth_user["public"] = public
-                auth_user["updatedAt"] = now()
-                write_db(db)
-                self.send_json(sanitize_user(auth_user))
+                def mutate(db):
+                    auth_user = get_session_user(db, token)
+                    if not auth_user:
+                        raise ValueError("Unauthorized")
+                    auth_user["public"] = bool(body.get("public", True))
+                    auth_user["updatedAt"] = now()
+                    return sanitize_user(auth_user)
+
+                self.send_json(update_db(mutate))
                 return
 
             if path == "/api/admin/users":
-                if not is_admin(auth_user):
-                    self.send_error(403)
-                    return
-                if find_user_by_name(db, str(body.get("username") or body.get("name", "")).strip()):
-                    raise ValueError("Username already exists")
-                user = build_user(body)
-                db["users"].append(user)
-                write_db(db)
-                self.send_json(admin_user_row(user, db))
+                def mutate(db):
+                    auth_user = get_session_user(db, token)
+                    if not auth_user or not is_admin(auth_user):
+                        raise ValueError("Forbidden")
+                    if find_user_by_name(db, str(body.get("username") or body.get("name", "")).strip()):
+                        raise ValueError("Username already exists")
+                    user = build_user(body)
+                    db["users"].append(user)
+                    return admin_user_row(user, db)
+
+                self.send_json(update_db(mutate))
                 return
 
             if path == "/api/matches":
-                user_id = auth_user["id"]
-                matches = body if isinstance(body, list) else body.get("matches", [])
-                if not isinstance(matches, list):
-                    raise ValueError("Expected matches list")
-                db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
-                for match in matches:
-                    if isinstance(match, dict):
-                        match.setdefault("id", str(uuid.uuid4()))
-                        match["userId"] = user_id
-                        match["updatedAt"] = match.get("updatedAt") or now()
-                        db["matches"].append(match)
-                write_db(db)
-                self.send_json({"ok": True, "count": len(matches)})
+                def mutate(db):
+                    auth_user = get_session_user(db, token)
+                    if not auth_user:
+                        raise ValueError("Unauthorized")
+                    user_id = auth_user["id"]
+                    matches = body if isinstance(body, list) else body.get("matches", [])
+                    if not isinstance(matches, list):
+                        raise ValueError("Expected matches list")
+                    db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
+                    for match in matches:
+                        if isinstance(match, dict):
+                            match.setdefault("id", str(uuid.uuid4()))
+                            match["userId"] = user_id
+                            match["updatedAt"] = match.get("updatedAt") or now()
+                            db["matches"].append(match)
+                    return {"ok": True, "count": len(matches)}
+
+                self.send_json(update_db(mutate))
                 return
 
             self.send_error(404)
         except ValueError as exc:
-            self.send_json_error(400, str(exc))
+            message = str(exc)
+            if message == "Unauthorized":
+                self.send_error(401)
+                return
+            if message == "Forbidden":
+                self.send_error(403)
+                return
+            self.send_json_error(400, message)
         except Exception as exc:
             self.send_json_error(400, str(exc))
 
@@ -436,52 +485,60 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         body = self.read_json()
-        db = read_db()
-        auth_user = self.require_admin(db)
-        if not auth_user:
-            return
+        token = self.get_auth_token()
 
         try:
             user_id, action = parse_admin_user_path(path)
             if not user_id or action:
                 self.send_error(404)
                 return
-            target = find_user_by_id(db, user_id)
-            if not target:
-                raise ValueError("User not found")
-            if is_admin(target) and user_role(auth_user) == "admin" and target["id"] != auth_user["id"] and body.get("role") == "user":
-                admins = [user for user in db["users"] if is_admin(user)]
-                if len(admins) <= 1:
-                    raise ValueError("Cannot remove the last admin")
 
-            new_name = str(body.get("username") or body.get("name", target["name"])).strip()[:48]
-            existing = find_user_by_name(db, new_name)
-            if existing and existing["id"] != target["id"]:
-                raise ValueError("Username already exists")
+            def mutate(db):
+                auth_user = get_session_user(db, token)
+                if not auth_user or not is_admin(auth_user):
+                    raise ValueError("Forbidden")
+                target = find_user_by_id(db, user_id)
+                if not target:
+                    raise ValueError("User not found")
+                if is_admin(target) and target["id"] != auth_user["id"] and body.get("role") == "user":
+                    admins = [user for user in db["users"] if is_admin(user)]
+                    if len(admins) <= 1:
+                        raise ValueError("Cannot remove the last admin")
+                new_name = str(body.get("username") or body.get("name", target["name"])).strip()[:48]
+                existing = find_user_by_name(db, new_name)
+                if existing and existing["id"] != target["id"]:
+                    raise ValueError("Username already exists")
+                updated = build_user({**body, "username": new_name, "name": new_name}, existing=target)
+                return admin_user_row(updated, db)
 
-            updated = build_user({**body, "username": new_name, "name": new_name}, existing=target)
-            write_db(db)
-            self.send_json(admin_user_row(updated, db))
+            self.send_json(update_db(mutate))
         except ValueError as exc:
-            self.send_json_error(400, str(exc))
+            message = str(exc)
+            if message == "Forbidden":
+                self.send_error(403)
+                return
+            self.send_json_error(400, message)
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        db = read_db()
-        auth_user = self.require_admin(db)
-        if not auth_user:
-            return
+        token = self.get_auth_token()
 
         try:
             if path.startswith("/api/admin/matches/"):
                 match_id = path.split("/api/admin/matches/", 1)[1]
-                before = len(db["matches"])
-                db["matches"] = [match for match in db["matches"] if match.get("id") != match_id]
-                if len(db["matches"]) == before:
-                    raise ValueError("Match not found")
-                write_db(db)
-                self.send_json({"ok": True})
+
+                def mutate(db):
+                    auth_user = get_session_user(db, token)
+                    if not auth_user or not is_admin(auth_user):
+                        raise ValueError("Forbidden")
+                    before = len(db["matches"])
+                    db["matches"] = [match for match in db["matches"] if match.get("id") != match_id]
+                    if len(db["matches"]) == before:
+                        raise ValueError("Match not found")
+                    return {"ok": True}
+
+                self.send_json(update_db(mutate))
                 return
 
             user_id, action = parse_admin_user_path(path)
@@ -489,33 +546,42 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
 
-            target = find_user_by_id(db, user_id)
-            if not target:
-                raise ValueError("User not found")
+            def mutate(db):
+                auth_user = get_session_user(db, token)
+                if not auth_user or not is_admin(auth_user):
+                    raise ValueError("Forbidden")
+                target = find_user_by_id(db, user_id)
+                if not target:
+                    raise ValueError("User not found")
 
-            if action == "matches":
-                removed = sum(1 for match in db["matches"] if match.get("userId") == user_id)
+                if action == "matches":
+                    removed = sum(1 for match in db["matches"] if match.get("userId") == user_id)
+                    db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
+                    return {"ok": True, "removed": removed}
+
+                if action:
+                    raise ValueError("Not found")
+
+                if is_admin(target):
+                    admins = [user for user in db["users"] if is_admin(user)]
+                    if len(admins) <= 1:
+                        raise ValueError("Cannot delete the last admin")
+
+                db["users"] = [user for user in db["users"] if user.get("id") != user_id]
                 db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
-                write_db(db)
-                self.send_json({"ok": True, "removed": removed})
-                return
+                remove_user_sessions(db, user_id)
+                return {"ok": True}
 
-            if action:
+            self.send_json(update_db(mutate))
+        except ValueError as exc:
+            message = str(exc)
+            if message == "Forbidden":
+                self.send_error(403)
+                return
+            if message == "Not found":
                 self.send_error(404)
                 return
-
-            if is_admin(target):
-                admins = [user for user in db["users"] if is_admin(user)]
-                if len(admins) <= 1:
-                    raise ValueError("Cannot delete the last admin")
-
-            db["users"] = [user for user in db["users"] if user.get("id") != user_id]
-            db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
-            remove_user_sessions(db, user_id)
-            write_db(db)
-            self.send_json({"ok": True})
-        except ValueError as exc:
-            self.send_json_error(400, str(exc))
+            self.send_json_error(400, message)
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
