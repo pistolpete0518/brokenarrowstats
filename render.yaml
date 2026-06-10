@@ -3,7 +3,7 @@ services:
     name: brokenarrowstats
     runtime: python
     plan: free
-    buildCommand: pip install --upgrade pip
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python work/broken_arrow_server.py
     healthCheckPath: /
     envVars:
@@ -16,4 +16,6 @@ services:
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_URL
         sync: false

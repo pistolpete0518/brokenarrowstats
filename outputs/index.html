@@ -1221,18 +1221,27 @@
         await enterPublicView(sharedUserId);
         return;
       }
+      state.token = localStorage.getItem(sessionKey) || "";
       if (!state.token) {
         showAuthOverlay();
         return;
       }
       try {
-        const response = await apiFetch("/api/auth/me", { cache: "no-store" });
-        if (!response.ok) throw new Error("Invalid session");
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+          headers: authHeaders(),
+        });
+        if (response.status === 401) {
+          clearSession();
+          showAuthOverlay("Your session expired. Sign in with your username and password.");
+          return;
+        }
+        if (!response.ok) throw new Error("Could not restore your session");
         state.user = await response.json();
         await enterApp();
       } catch {
         clearSession();
-        showAuthOverlay();
+        showAuthOverlay("Could not restore your session. Sign in with your username and password.");
       }
     }
 
@@ -1273,14 +1282,15 @@
       initApp();
     }
 
-    function showAuthOverlay() {
+    function showAuthOverlay(message = "") {
       const overlay = $("authOverlay");
       const app = $("appRoot");
       overlay.classList.remove("hidden");
       overlay.style.display = "grid";
       app.classList.add("hidden");
       app.style.display = "none";
-      $("authError").textContent = "";
+      $("authError").textContent = message;
+      $("authError").className = message ? "save-status ok" : "auth-error";
     }
 
     function hideAuthOverlay() {
@@ -1337,7 +1347,12 @@
         } catch {
           throw new Error("Server error while saving account. Please try again.");
         }
-        if (!response.ok) throw new Error(payload.error || "Authentication failed");
+        if (!response.ok) {
+          const loginHint = payload.error === "Invalid username or password"
+            ? " If you created your account before persistent storage was enabled, create it again with the same username."
+            : "";
+          throw new Error((payload.error || "Authentication failed") + loginHint);
+        }
         state.token = payload.token;
         state.user = payload.user;
         localStorage.setItem(sessionKey, state.token);

@@ -1,3 +1,4 @@
+from db_store import get_store, storage_backend, update_db as store_update_db
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -13,8 +14,6 @@ import uuid
 
 
 ROOT = Path(os.environ.get("BROKEN_ARROW_ROOT", Path(__file__).resolve().parents[1] / "outputs"))
-OLD_DATA_FILE = ROOT / "broken-arrow-data.json"
-DB_FILE = ROOT / "broken-arrow-db.json"
 SESSION_DAYS = 30
 PBKDF2_ROUNDS = 120_000
 _DB_LOCK = threading.Lock()
@@ -24,73 +23,21 @@ def now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def default_db():
-    return {
-        "users": [],
-        "sessions": {},
-        "matches": [],
-    }
-
-
-def _load_db_raw():
-    ROOT.mkdir(parents=True, exist_ok=True)
-    candidates = [DB_FILE, DB_FILE.with_suffix(".json.bak")]
-    for path in candidates:
-        if not path.exists():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("users"), list) and isinstance(data.get("matches"), list):
-                data.setdefault("sessions", {})
-                return data
-        except Exception:
-            continue
-
-    db = default_db()
-    if OLD_DATA_FILE.exists():
-        try:
-            old_matches = json.loads(OLD_DATA_FILE.read_text(encoding="utf-8"))
-            if isinstance(old_matches, list):
-                for match in old_matches:
-                    if isinstance(match, dict):
-                        match.setdefault("id", str(uuid.uuid4()))
-                        match["userId"] = "legacy-local"
-                        db["matches"].append(match)
-        except Exception:
-            pass
-    return db
-
-
-def _save_db_raw(db):
-    ROOT.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(db, indent=2)
-    temp_file = DB_FILE.with_suffix(".json.tmp")
-    temp_file.write_text(payload, encoding="utf-8")
-    if DB_FILE.exists():
-        backup_file = DB_FILE.with_suffix(".json.bak")
-        backup_file.write_text(DB_FILE.read_text(encoding="utf-8"), encoding="utf-8")
-    os.replace(temp_file, DB_FILE)
-
-
 def read_db():
     with _DB_LOCK:
-        db = _load_db_raw()
-        ensure_admin_user(db)
+        store = get_store()
+        db = store.read()
+        if ensure_admin_user(db):
+            store.write(db)
         return copy.deepcopy(db)
 
 
 def update_db(mutator):
-    with _DB_LOCK:
-        db = _load_db_raw()
+    def mutate(db):
         ensure_admin_user(db)
-        result = mutator(db)
-        _save_db_raw(db)
-        return result
+        return mutator(db)
 
-
-def write_db(db):
-    with _DB_LOCK:
-        _save_db_raw(db)
+    return store_update_db(mutate)
 
 
 def hash_password(password, salt=None):
@@ -368,6 +315,15 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
             self.send_json({
                 "users": [sanitize_user(auth_user)],
                 "matches": [match for match in db["matches"] if match.get("userId") == auth_user["id"]],
+            })
+            return
+
+        if path == "/api/health":
+            self.send_json({
+                "ok": True,
+                "storage": storage_backend(),
+                "users": len(db["users"]),
+                "matches": len(db["matches"]),
             })
             return
 
@@ -651,5 +607,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8787"))
     ROOT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), BrokenArrowHandler)
-    print(f"BrokenArrowStats server running on http://{host}:{port}/")
+    backend = storage_backend()
+    if backend == "json":
+        print("WARNING: Using local JSON storage. Accounts are lost on Render restarts unless DATABASE_URL is set.")
+    print(f"BrokenArrowStats server running on http://{host}:{port}/ (storage={backend})")
     server.serve_forever()
