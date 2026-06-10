@@ -1,4 +1,4 @@
-from db_store import get_store, storage_backend, update_db as store_update_db
+from db_store import get_store, storage_backend, test_database_connection, update_db as store_update_db
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -355,11 +355,16 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/health":
-            self.send_json({
+            status = test_database_connection() if os.environ.get("DATABASE_URL", "").strip() else {
                 "ok": True,
                 "storage": storage_backend(),
                 "users": len(db["users"]),
                 "matches": len(db["matches"]),
+            }
+            self.send_json({
+                **status,
+                "users": status.get("users", len(db["users"])),
+                "matches": status.get("matches", len(db["matches"])),
                 "publicSiteUrl": public_site_url() or "",
             })
             return
@@ -644,8 +649,17 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8787"))
     ROOT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), BrokenArrowHandler)
-    backend = storage_backend()
-    if backend == "json":
-        print("WARNING: Using local JSON storage. Accounts are lost on Render restarts unless DATABASE_URL is set.")
-    print(f"BrokenArrowStats server running on http://{host}:{port}/ (storage={backend})")
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if database_url:
+        status = test_database_connection()
+        if status.get("ok"):
+            print(
+                "Neon/Postgres connected. "
+                f"users={status.get('users', 0)} matches={status.get('matches', 0)}"
+            )
+        else:
+            print(f"ERROR: DATABASE_URL is set but connection failed: {status.get('error')}")
+    else:
+        print("WARNING: DATABASE_URL is not set. Stats and logins are lost on Render restarts.")
+    print(f"BrokenArrowStats server running on http://{host}:{port}/ (storage={storage_backend()})")
     server.serve_forever()

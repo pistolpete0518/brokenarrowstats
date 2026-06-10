@@ -48,6 +48,13 @@ def normalize_database_url(url):
     url = url.strip()
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
+    if "neon.tech" in url:
+        separator = "&" if "?" in url else "?"
+        if "sslmode=" not in url:
+            url = f"{url}{separator}sslmode=require"
+            separator = "&"
+        if "connect_timeout=" not in url:
+            url = f"{url}{separator}connect_timeout=10"
     return url
 
 
@@ -252,6 +259,23 @@ def get_store():
 
 def storage_backend():
     return get_store().backend_name()
+
+
+def test_database_connection():
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        return {"ok": False, "storage": "json", "error": "DATABASE_URL is not set"}
+    try:
+        store = PostgresStore(database_url)
+        db = store.read()
+        return {
+            "ok": True,
+            "storage": "postgres",
+            "users": len(db.get("users", [])),
+            "matches": len(db.get("matches", [])),
+        }
+    except Exception as exc:
+        return {"ok": False, "storage": "postgres", "error": str(exc)}
 
 
 def read_db_copy():
