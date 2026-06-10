@@ -90,7 +90,7 @@
       margin: 0 auto;
       padding: 0 18px 14px;
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) auto auto auto;
+      grid-template-columns: minmax(180px, 1fr) auto auto auto auto;
       gap: 10px;
       align-items: end;
     }
@@ -531,6 +531,91 @@
       grid-template-columns: 1fr;
     }
 
+    .admin-panel {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .admin-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .admin-card,
+    .admin-box {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(23, 27, 25, .95);
+      box-shadow: var(--shadow);
+    }
+
+    .admin-card {
+      padding: 12px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .admin-box {
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .admin-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .admin-table-wrap {
+      overflow: auto;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+    }
+
+    .admin-table th,
+    .admin-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: .84rem;
+      vertical-align: top;
+    }
+
+    .admin-table th {
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .role-admin {
+      background: rgba(242, 193, 78, .18);
+      color: #ffe08a;
+    }
+
+    .role-user {
+      background: rgba(111, 177, 232, .18);
+      color: #b9defb;
+    }
+
+    @media (max-width: 900px) {
+      .admin-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
     @media (max-width: 1100px) {
       main {
         grid-template-columns: 1fr;
@@ -636,11 +721,69 @@
           Public profile
         </label>
         <button id="copyShareBtn" type="button">Copy Share Link</button>
+        <button id="adminBtn" type="button" class="hidden">Admin</button>
         <button id="logoutBtn" type="button" class="ghost">Log Out</button>
       </div>
     </header>
 
-    <main>
+    <section id="adminPanel" class="admin-panel hidden" aria-label="Admin dashboard">
+      <div class="admin-toolbar">
+        <div>
+          <h2>Admin Dashboard</h2>
+          <div class="subhead">Manage users, roles, and match data</div>
+        </div>
+        <button id="adminBackBtn" type="button">Back to Stats</button>
+      </div>
+
+      <div class="admin-grid" id="adminSummary"></div>
+
+      <div class="admin-box">
+        <h2>Create User</h2>
+        <form id="adminCreateForm" class="admin-form">
+          <div class="grid-2">
+            <label>Username
+              <input id="adminCreateName" required />
+            </label>
+            <label>Password
+              <input id="adminCreatePassword" type="password" required />
+            </label>
+          </div>
+          <div class="grid-3">
+            <label>Role
+              <select id="adminCreateRole">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label class="public-toggle">
+              <input id="adminCreatePublic" type="checkbox" checked />
+              Public profile
+            </label>
+            <button class="primary" type="submit">Add User</button>
+          </div>
+          <div id="adminCreateStatus" class="save-status" aria-live="polite"></div>
+        </form>
+      </div>
+
+      <div class="admin-box admin-table-wrap">
+        <h2>Users</h2>
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Public</th>
+              <th>Matches</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adminUserRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <main id="playerMain">
       <section class="entry owner-only" aria-label="Match entry">
         <h2 id="formTitle">Add Match</h2>
         <form id="matchForm">
@@ -895,6 +1038,7 @@
       matches: [],
       publicUsers: [],
       publicMatches: [],
+      adminUsers: [],
       viewMode: false,
       authMode: "login",
     };
@@ -909,6 +1053,9 @@
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
     $("copyShareBtn").addEventListener("click", copyShareLink);
+    $("adminBtn").addEventListener("click", openAdminPanel);
+    $("adminBackBtn").addEventListener("click", closeAdminPanel);
+    $("adminCreateForm").addEventListener("submit", adminCreateUser);
     $("matchForm").addEventListener("submit", saveMatch);
     $("resetBtn").addEventListener("click", resetForm);
     $("clearBtn").addEventListener("click", clearMatches);
@@ -1077,12 +1224,178 @@
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
       hideAuthOverlay();
+      closeAdminPanel();
       $("currentUserName").textContent = state.user.name;
       $("publicProfile").checked = Boolean(state.user.public);
+      $("adminBtn").classList.toggle("hidden", state.user.role !== "admin");
       state.matches = loadMatches();
       restoreDraft();
       render();
       await Promise.all([loadServerMatches(), loadPublicUsers()]);
+    }
+
+    function openAdminPanel() {
+      if (state.user?.role !== "admin") return;
+      $("playerMain").classList.add("hidden");
+      $("adminPanel").classList.remove("hidden");
+      loadAdminDashboard();
+    }
+
+    function closeAdminPanel() {
+      $("adminPanel").classList.add("hidden");
+      $("playerMain").classList.remove("hidden");
+    }
+
+    async function loadAdminDashboard() {
+      try {
+        const [overviewResponse, usersResponse] = await Promise.all([
+          apiFetch("/api/admin/overview", { cache: "no-store" }),
+          apiFetch("/api/admin/users", { cache: "no-store" }),
+        ]);
+        if (!overviewResponse.ok || !usersResponse.ok) throw new Error("Could not load admin dashboard");
+        const overview = await overviewResponse.json();
+        const users = await usersResponse.json();
+        state.adminUsers = users;
+        renderAdminSummary(overview);
+        renderAdminUsers(users);
+      } catch (error) {
+        $("adminCreateStatus").textContent = error.message || "Admin dashboard failed to load";
+        $("adminCreateStatus").className = "save-status error";
+      }
+    }
+
+    function renderAdminSummary(overview) {
+      $("adminSummary").innerHTML = [
+        statCard("Users", overview.users),
+        statCard("Admins", overview.admins),
+        statCard("Matches", overview.matches),
+        statCard("Public Profiles", overview.publicUsers),
+      ].join("");
+    }
+
+    function renderAdminUsers(users) {
+      const rows = $("adminUserRows");
+      if (!users.length) {
+        rows.innerHTML = `<tr><td colspan="6" class="muted">No users yet.</td></tr>`;
+        return;
+      }
+      rows.innerHTML = users.map((user) => `
+        <tr>
+          <td><strong>${escapeHtml(user.name)}</strong></td>
+          <td><span class="pill ${user.role === "admin" ? "role-admin" : "role-user"}">${escapeHtml(user.role || "user")}</span></td>
+          <td>${user.public ? "Yes" : "No"}</td>
+          <td>${escapeHtml(user.matchCount ?? 0)}</td>
+          <td>${escapeHtml((user.createdAt || "").slice(0, 10) || "-")}</td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn" type="button" onclick="adminEditUser('${user.id}')">Edit</button>
+              <button class="icon-btn" type="button" onclick="adminClearUserStats('${user.id}')">Clear Stats</button>
+              <button class="icon-btn danger" type="button" onclick="adminDeleteUser('${user.id}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function adminCreateUser(event) {
+      event.preventDefault();
+      const payload = {
+        username: $("adminCreateName").value.trim(),
+        password: $("adminCreatePassword").value,
+        role: $("adminCreateRole").value,
+        public: $("adminCreatePublic").checked,
+      };
+      try {
+        const response = await apiFetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not create user");
+        $("adminCreateForm").reset();
+        $("adminCreatePublic").checked = true;
+        $("adminCreateStatus").textContent = `Created ${result.name}`;
+        $("adminCreateStatus").className = "save-status ok";
+        await loadAdminDashboard();
+      } catch (error) {
+        $("adminCreateStatus").textContent = error.message || "Create user failed";
+        $("adminCreateStatus").className = "save-status error";
+      }
+    }
+
+    async function adminEditUser(userId) {
+      const user = (state.adminUsers || []).find((item) => item.id === userId);
+      if (!user) return;
+      const name = prompt("Username", user.name);
+      if (name === null) return;
+      const role = prompt("Role (user or admin)", user.role || "user");
+      if (role === null) return;
+      const isPublic = confirm("Public profile?");
+      const password = prompt("New password (leave blank to keep current)") || "";
+      try {
+        const response = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: name.trim(),
+            role: role.trim().toLowerCase() === "admin" ? "admin" : "user",
+            public: isPublic,
+            password,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not update user");
+        await loadAdminDashboard();
+        if (state.user?.id === userId) {
+          state.user = result;
+          $("currentUserName").textContent = state.user.name;
+          $("publicProfile").checked = Boolean(state.user.public);
+          $("adminBtn").classList.toggle("hidden", state.user.role !== "admin");
+        }
+      } catch (error) {
+        alert(error.message || "Update failed");
+      }
+    }
+
+    async function adminClearUserStats(userId) {
+      const user = (state.adminUsers || []).find((item) => item.id === userId);
+      const name = user?.name || "this user";
+      if (!confirm(`Delete all match stats for ${name}?`)) return;
+      try {
+        const response = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}/matches`, {
+          method: "DELETE",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not clear stats");
+        if (state.user?.id === userId) {
+          state.matches = [];
+          render();
+        }
+        await loadAdminDashboard();
+      } catch (error) {
+        alert(error.message || "Clear stats failed");
+      }
+    }
+
+    async function adminDeleteUser(userId) {
+      const user = (state.adminUsers || []).find((item) => item.id === userId);
+      const name = user?.name || "this user";
+      if (!confirm(`Delete user ${name} and all of their stats? This cannot be undone.`)) return;
+      try {
+        const response = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+          method: "DELETE",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not delete user");
+        if (state.user?.id === userId) {
+          await logout();
+          return;
+        }
+        await loadAdminDashboard();
+      } catch (error) {
+        alert(error.message || "Delete user failed");
+      }
     }
 
     function clearSession() {

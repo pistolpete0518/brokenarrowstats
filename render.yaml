@@ -13,3 +13,7 @@ services:
         value: 0.0.0.0
       - key: BROKEN_ARROW_ROOT
         value: /opt/render/project/src/outputs
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
