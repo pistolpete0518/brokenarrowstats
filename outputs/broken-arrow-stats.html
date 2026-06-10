@@ -558,7 +558,8 @@
       width: 100%;
     }
 
-    body.view-mode .owner-only {
+    body.view-mode .owner-only,
+    body.guest-mode .owner-only {
       display: none !important;
     }
 
@@ -804,7 +805,7 @@
   </style>
 </head>
 <body>
-  <div id="authOverlay" class="auth-overlay">
+  <div id="authOverlay" class="auth-overlay hidden">
     <div class="auth-card">
       <h2 id="authTitle">Sign In</h2>
       <p id="authSubtitle">Log in to track your matches on BrokenArrowStats. Each player has their own account and stats.</p>
@@ -849,7 +850,8 @@
         </div>
       </div>
       <div id="viewBanner" class="view-banner hidden">
-        <span id="viewBannerText">Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
+        <span id="viewBannerHome" class="hidden">Browse public player stats, explore the Top 10, or pick a player below.</span>
+        <span id="viewBannerPlayer">Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
         <div id="browsePlayerWrap" class="browse-player hidden">
           <div class="browse-player-row">
             <label class="browse-player-search">Search player
@@ -1221,7 +1223,10 @@
 
     $("authForm").addEventListener("submit", handleAuthSubmit);
     $("authModeBtn").addEventListener("click", toggleAuthMode);
-    $("browsePublicBtn").addEventListener("click", enterGuestBrowse);
+    $("browsePublicBtn").addEventListener("click", () => {
+      hideAuthOverlay();
+      if (!state.guestMode) enterGuestHome();
+    });
     $("browsePlayerSelect").addEventListener("change", () => {
       const userId = $("browsePlayerSelect").value;
       const selected = state.publicUsers.find((user) => user.id === userId);
@@ -1236,7 +1241,13 @@
       const match = filteredPublicUsers()[0];
       if (match) viewPublicPlayer(match.id, { updateUrl: true });
     });
-    $("viewSignInBtn").addEventListener("click", leavePublicView);
+    $("viewSignInBtn").addEventListener("click", () => {
+      if (state.token) {
+        leavePublicView();
+      } else {
+        openSignInOverlay();
+      }
+    });
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
     $("copyShareBtn").addEventListener("click", copyShareLink);
@@ -1298,7 +1309,8 @@
       });
       if (response.status === 401 && state.token) {
         clearSession();
-        showAuthOverlay();
+        await enterGuestHome({ keepToken: false });
+        openSignInOverlay("Your session expired. Sign in with your username and password.");
         throw new Error("Session expired. Please sign in again.");
       }
       return response;
@@ -1312,12 +1324,12 @@
         return;
       }
       if (new URLSearchParams(location.search).get("browse") === "1") {
-        await enterGuestBrowse();
+        await enterGuestHome();
         return;
       }
       state.token = localStorage.getItem(sessionKey) || "";
       if (!state.token) {
-        showAuthOverlay();
+        await enterGuestHome();
         return;
       }
       try {
@@ -1327,7 +1339,8 @@
         });
         if (response.status === 401) {
           clearSession();
-          showAuthOverlay("Your session expired. Sign in with your username and password.");
+          await enterGuestHome();
+          openSignInOverlay("Your session expired. Sign in with your username and password.");
           return;
         }
         if (!response.ok) throw new Error("Could not restore your session");
@@ -1335,7 +1348,8 @@
         await enterApp();
       } catch {
         clearSession();
-        showAuthOverlay("Could not restore your session. Sign in with your username and password.");
+        await enterGuestHome();
+        openSignInOverlay("Could not restore your session. Sign in with your username and password.");
       }
     }
 
@@ -1354,7 +1368,10 @@
         state.viewMode = true;
         state.guestMode = options.guestMode ?? state.guestMode ?? !state.token;
         document.body.classList.add("view-mode");
+        if (state.guestMode) document.body.classList.add("guest-mode");
         $("viewBannerName").textContent = state.user.name;
+        $("viewBannerHome").classList.add("hidden");
+        $("viewBannerPlayer").classList.remove("hidden");
         $("viewBanner").classList.remove("hidden");
         $("browsePlayerWrap").classList.toggle("hidden", !state.guestMode);
         $("statsTabBtn").textContent = state.guestMode ? "Player Stats" : "My Stats";
@@ -1374,32 +1391,51 @@
       } catch (error) {
         state.viewMode = false;
         state.guestMode = false;
-        document.body.classList.remove("view-mode");
+        document.body.classList.remove("view-mode", "guest-mode");
         $("viewBanner").classList.add("hidden");
         $("browsePlayerWrap").classList.add("hidden");
-        showAuthOverlay();
-        $("authError").textContent = error.message || "Could not load shared profile.";
+        await enterGuestHome();
+        openSignInOverlay(error.message || "Could not load shared profile.");
       }
     }
 
-    async function enterGuestBrowse() {
+    function setGuestBannerMode(mode) {
+      const onHome = mode === "home";
+      $("viewBannerHome").classList.toggle("hidden", !onHome);
+      $("viewBannerPlayer").classList.toggle("hidden", onHome);
+    }
+
+    async function enterGuestHome(options = {}) {
       try {
         await loadPublicUsers();
-        if (!state.publicUsers.length) {
-          showAuthOverlay();
-          $("authError").textContent = "No public profiles are available yet. Sign in and enable Public profile to share stats.";
-          $("authError").className = "save-status error";
-          return;
-        }
         state.guestMode = true;
-        state.token = "";
+        state.viewMode = false;
         state.user = null;
-        clearSession();
-        history.replaceState({}, "", `${location.pathname}?browse=1`);
-        await enterPublicView(state.publicUsers[0].id, { guestMode: true });
+        state.matches = [];
+        if (!options.keepToken) {
+          state.token = "";
+          clearSession();
+        }
+        document.body.classList.add("guest-mode");
+        document.body.classList.remove("view-mode");
+        setGuestBannerMode("home");
+        $("viewBanner").classList.remove("hidden");
+        $("browsePlayerWrap").classList.remove("hidden");
+        $("browsePlayerSearch").value = "";
+        state.browsePlayerFilter = "";
+        populateBrowsePlayerSelect();
+        $("statsTabBtn").textContent = "Player Stats";
+        $("viewSignInBtn").textContent = "Sign in to track your own matches";
+        if (options.updateUrl !== false) {
+          history.replaceState({}, "", `${location.pathname}?browse=1`);
+        }
+        updateTop10TabVisibility();
+        hideAuthOverlay();
+        state.compareCache = {};
+        populateCompareSelects();
+        await openTop10Tab();
       } catch (error) {
-        showAuthOverlay();
-        $("authError").textContent = error.message || "Could not load public stats.";
+        openSignInOverlay(error.message || "Could not load public stats.");
         $("authError").className = "save-status error";
       }
     }
@@ -1453,7 +1489,7 @@
       state.viewMode = false;
       state.guestMode = false;
       state.matches = [];
-      document.body.classList.remove("view-mode");
+      document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
       $("browsePlayerWrap").classList.add("hidden");
       $("browsePlayerSearch").value = "";
@@ -1461,6 +1497,14 @@
       $("statsTabBtn").textContent = "My Stats";
       updateTop10TabVisibility();
       initApp();
+    }
+
+    function openSignInOverlay(message = "") {
+      $("browsePublicBtn").textContent = state.guestMode
+        ? "Continue browsing without signing in"
+        : "Browse public stats without signing in";
+      setAuthMode("login");
+      showAuthOverlay(message);
     }
 
     function showAuthOverlay(message = "") {
@@ -1554,7 +1598,7 @@
     async function enterApp() {
       state.viewMode = false;
       state.guestMode = false;
-      document.body.classList.remove("view-mode");
+      document.body.classList.remove("view-mode", "guest-mode");
       $("viewBanner").classList.add("hidden");
       $("browsePlayerWrap").classList.add("hidden");
       $("browsePlayerSearch").value = "";
@@ -2056,8 +2100,7 @@
       clearSession();
       state.matches = [];
       resetForm();
-      setAuthMode("login");
-      showAuthOverlay();
+      await enterGuestHome();
     }
 
     async function updatePublicProfile() {
@@ -2352,7 +2395,26 @@
       return matches.reduce((sum, match) => sum + Number(match[field] || 0), 0) / matches.length;
     }
 
+    function renderGuestHomePrompt() {
+      const message = `<div class="muted">Select a player from the search bar above to view their match history and stats.</div>`;
+      $("summary").innerHTML = message;
+      $("matchRows").innerHTML = `<tr><td colspan="10" class="muted">No player selected</td></tr>`;
+      ["mapStats", "deckStats", "userStats"].forEach((id) => {
+        $(id).innerHTML = message;
+      });
+      ["trendCanvas", "factionCanvas", "performanceCanvas", "combatCanvas", "mapCanvas"].forEach((id) => {
+        const canvas = $(id);
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      });
+    }
+
     function render() {
+      if (state.guestMode && !state.viewMode) {
+        renderGuestHomePrompt();
+        return;
+      }
       const matches = filteredMatches();
       renderSummary(matches);
       renderTable(matches);
