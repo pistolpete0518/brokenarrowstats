@@ -550,8 +550,16 @@
       flex-wrap: wrap;
     }
 
-    .browse-player-search input {
+    .browse-player-fields {
+      display: grid;
+      gap: 8px;
+      min-width: min(320px, 100%);
+    }
+
+    .browse-player-search input,
+    .browse-player-select select {
       min-width: 220px;
+      width: 100%;
     }
 
     #browsePublicBtn {
@@ -868,12 +876,14 @@
       </div>
       <div id="playerSearchBar" class="player-search-bar hidden">
         <div class="browse-player-row">
-          <label class="browse-player-search">Search player
-            <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
-          </label>
-          <label>Player
-            <select id="browsePlayerSelect"></select>
-          </label>
+          <div class="browse-player-fields">
+            <label class="browse-player-search">Search player
+              <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
+            </label>
+            <label class="browse-player-select">Player
+              <select id="browsePlayerSelect"></select>
+            </label>
+          </div>
           <button id="viewMyStatsBtn" type="button" class="ghost hidden">Back to my stats</button>
         </div>
       </div>
