@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: broken-arrow-stats
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip
+    startCommand: python work/broken_arrow_server.py
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: HOST
+        value: 0.0.0.0
+      - key: BROKEN_ARROW_ROOT
+        value: /opt/render/project/src/outputs

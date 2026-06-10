@@ -1,0 +1,8 @@
+services:
+  broken-arrow:
+    build: .
+    ports:
+      - "8787:8080"
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped

@@ -1,0 +1,1760 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Broken Arrow Stats</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101312;
+      --panel: #171b19;
+      --panel-2: #202620;
+      --line: #364037;
+      --text: #f2f5ee;
+      --muted: #aab3a7;
+      --accent: #f2c14e;
+      --green: #5ec88c;
+      --red: #e66b63;
+      --blue: #6fb1e8;
+      --ink: #0f120f;
+      --radius: 8px;
+      --shadow: 0 18px 55px rgba(0, 0, 0, .28);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background:
+        linear-gradient(180deg, rgba(16,19,18,.82), rgba(16,19,18,.97)),
+        repeating-linear-gradient(135deg, #1c211c 0 2px, #101312 2px 18px);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid var(--line);
+      background: rgba(16, 19, 18, .9);
+      backdrop-filter: blur(14px);
+    }
+
+    .topbar {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.1rem, 2vw, 1.55rem);
+      line-height: 1.1;
+    }
+
+    .subhead {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .account-bar {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 0 18px 14px;
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .account-bar label {
+      font-size: .76rem;
+    }
+
+    .public-toggle {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111411;
+      padding: 8px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .public-toggle input {
+      width: auto;
+      min-height: auto;
+    }
+
+    button, .file-label {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    button:hover, .file-label:hover {
+      border-color: #66745f;
+      background: #293128;
+    }
+
+    .primary {
+      border-color: #f2c14e;
+      background: var(--accent);
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .danger {
+      border-color: #71423f;
+      color: #ffd7d3;
+    }
+
+    .ghost {
+      background: transparent;
+    }
+
+    main {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .entry, .dashboard {
+      border: 1px solid var(--line);
+      background: rgba(23, 27, 25, .95);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      min-width: 0;
+    }
+
+    .entry {
+      position: sticky;
+      top: 84px;
+      padding: 16px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: .79rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111411;
+      color: var(--text);
+      padding: 8px 9px;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(242, 193, 78, .12);
+    }
+
+    textarea {
+      min-height: 66px;
+      resize: vertical;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: 38px;
+    }
+
+    .segmented input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segmented span {
+      display: grid;
+      place-items: center;
+      padding: 8px;
+      cursor: pointer;
+      color: var(--muted);
+      background: #111411;
+      border-right: 1px solid var(--line);
+      font-size: .85rem;
+    }
+
+    .segmented label:last-child span { border-right: 0; }
+    .segmented label { min-width: 0; }
+    .segmented input:checked + span {
+      color: var(--ink);
+      background: var(--accent);
+      font-weight: 700;
+    }
+
+    .dashboard {
+      overflow: hidden;
+    }
+
+    .filters {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 1.5fr repeat(5, minmax(110px, .58fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    .summary {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #141815;
+    }
+
+    .insights {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .insight-box {
+      min-height: 190px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: #121613;
+      overflow: auto;
+    }
+
+    .mini-table {
+      width: 100%;
+      min-width: 0;
+      border-collapse: collapse;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      padding: 7px 6px;
+      border-bottom: 1px solid var(--line);
+      font-size: .78rem;
+    }
+
+    .mini-table th {
+      position: static;
+      background: transparent;
+    }
+
+    .stat {
+      min-height: 82px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel);
+      display: grid;
+      align-content: space-between;
+      gap: 6px;
+    }
+
+    .stat .label {
+      color: var(--muted);
+      font-size: .77rem;
+    }
+
+    .stat .value {
+      font-size: clamp(1.25rem, 2.2vw, 1.9rem);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .charts {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .chart-box {
+      min-height: 210px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: #121613;
+    }
+
+    .chart-box.wide {
+      grid-column: 1 / -1;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 170px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 460px);
+      min-height: 280px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      font-size: .87rem;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #171b19;
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    tr:hover td {
+      background: rgba(242, 193, 78, .05);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: .76rem;
+    }
+
+    .win { background: rgba(94, 200, 140, .18); color: #9df0bd; }
+    .loss { background: rgba(230, 107, 99, .18); color: #ffb1ab; }
+    .draw { background: rgba(111, 177, 232, .18); color: #b9defb; }
+    .muted { color: var(--muted); }
+    .row-actions { display: flex; gap: 6px; }
+    .save-status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: .78rem;
+      text-align: right;
+    }
+
+    .save-status.ok { color: #9df0bd; }
+    .save-status.error { color: #ffb1ab; }
+
+    .icon-btn {
+      min-width: 48px;
+      height: 34px;
+      min-height: 34px;
+      padding: 0 9px;
+      font-size: .78rem;
+    }
+    .hidden { display: none; }
+    input[type="file"] { display: none; }
+
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(8, 10, 9, .82);
+      backdrop-filter: blur(10px);
+    }
+
+    .auth-card {
+      width: min(420px, 100%);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      background: rgba(23, 27, 25, .98);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .auth-card h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .auth-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: .88rem;
+      line-height: 1.45;
+    }
+
+    .auth-error {
+      min-height: 18px;
+      color: #ffb1ab;
+      font-size: .82rem;
+    }
+
+    .auth-switch {
+      color: var(--muted);
+      font-size: .84rem;
+      text-align: center;
+    }
+
+    .auth-switch button {
+      background: none;
+      border: 0;
+      color: var(--accent);
+      padding: 0;
+      min-height: auto;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .user-pill {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111411;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .user-pill strong {
+      color: var(--accent);
+    }
+
+    .view-banner {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 0 18px 14px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .view-banner strong {
+      color: var(--accent);
+    }
+
+    body.view-mode .owner-only {
+      display: none !important;
+    }
+
+    body.view-mode main {
+      grid-template-columns: 1fr;
+    }
+
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .entry {
+        position: static;
+      }
+      .filters, .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .account-bar, .insights {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .charts {
+        grid-template-columns: 1fr;
+      }
+      .table-wrap {
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+      .account-bar {
+        grid-template-columns: 1fr;
+        padding: 0 10px 10px;
+      }
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        justify-content: stretch;
+      }
+      .actions button, .file-label {
+        width: 100%;
+        min-width: 0;
+      }
+      main {
+        padding: 10px;
+      }
+      .grid-2, .grid-3, .filters, .summary {
+        grid-template-columns: 1fr;
+      }
+      th, td {
+        padding: 9px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="authOverlay" class="auth-overlay">
+    <div class="auth-card">
+      <h2 id="authTitle">Sign In</h2>
+      <p id="authSubtitle">Log in to track your Broken Arrow matches. Each player has their own account and stats.</p>
+      <form id="authForm">
+        <div class="grid-2">
+          <label>Username
+            <input id="authUsername" autocomplete="username" required />
+          </label>
+          <label>Password
+            <input id="authPassword" type="password" autocomplete="current-password" required />
+          </label>
+        </div>
+        <label id="confirmPasswordWrap" class="hidden">Confirm password
+          <input id="authPasswordConfirm" type="password" autocomplete="new-password" />
+        </label>
+        <div id="authError" class="auth-error" aria-live="polite"></div>
+        <button id="authSubmitBtn" class="primary" type="submit">Sign In</button>
+      </form>
+      <div class="auth-switch">
+        <span id="authSwitchText">Need an account?</span>
+        <button id="authModeBtn" type="button">Create one</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app hidden" id="appRoot">
+    <header>
+      <div class="topbar">
+        <div>
+          <h1>Broken Arrow Stats</h1>
+          <div class="subhead">Match log and performance dashboard</div>
+        </div>
+        <div class="actions owner-only">
+          <button id="exportBtn" type="button" title="Download stats as CSV">Export CSV</button>
+          <label class="file-label" title="Import a CSV exported from this app">
+            Import CSV
+            <input id="importFile" type="file" accept=".csv,text/csv" />
+          </label>
+          <button id="sampleBtn" type="button" class="ghost" title="Load sample matches">Sample</button>
+          <button id="clearBtn" type="button" class="danger" title="Delete all saved matches">Clear</button>
+        </div>
+      </div>
+      <div id="viewBanner" class="view-banner hidden">
+        <span>Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
+        <button id="viewSignInBtn" type="button" class="primary">Sign in for your account</button>
+      </div>
+      <div class="account-bar owner-only">
+        <div class="user-pill">Signed in as <strong id="currentUserName">Player</strong></div>
+        <label class="public-toggle">
+          <input id="publicProfile" type="checkbox" checked />
+          Public profile
+        </label>
+        <button id="copyShareBtn" type="button">Copy Share Link</button>
+        <button id="logoutBtn" type="button" class="ghost">Log Out</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="entry owner-only" aria-label="Match entry">
+        <h2 id="formTitle">Add Match</h2>
+        <form id="matchForm">
+          <input id="editingId" type="hidden" />
+          <div class="grid-2">
+            <label>Date
+              <input id="date" type="date" required />
+            </label>
+            <label>Mode
+              <select id="mode">
+                <option>1v1</option>
+                <option>2v2</option>
+                <option>3v3</option>
+                <option>4v4</option>
+                <option>5v5</option>
+                <option>10v10</option>
+                <option>Skirmish</option>
+                <option>Custom</option>
+              </select>
+            </label>
+          </div>
+
+          <label>Result
+            <div class="segmented">
+              <label><input type="radio" name="result" value="Win" checked /><span>Win</span></label>
+              <label><input type="radio" name="result" value="Loss" /><span>Loss</span></label>
+              <label><input type="radio" name="result" value="Draw" /><span>Draw</span></label>
+            </div>
+          </label>
+
+          <div class="grid-2">
+            <label>Your faction
+              <select id="faction">
+                <option>USA</option>
+                <option>Russia</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label>Opponent faction
+              <select id="opponentFaction">
+                <option>Russia</option>
+                <option>USA</option>
+                <option>Other</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid-2">
+            <label>Map
+              <select id="map">
+                <option>Parnu</option>
+                <option>Baltisk</option>
+                <option>Circyahopsk</option>
+                <option>Kaliningrad</option>
+                <option>Central Village</option>
+                <option>Frontiers</option>
+                <option>River</option>
+                <option>Refinery</option>
+                <option>Ruda</option>
+                <option>Dam</option>
+                <option>Airbase</option>
+                <option>Airport</option>
+                <option>Klaipeda</option>
+                <option>Yelgava Palace</option>
+                <option>Highway of Death</option>
+                <option>Dead Center</option>
+                <option>Kadaga Military Base</option>
+              </select>
+            </label>
+            <label>Deck
+              <input id="deck" placeholder="Airborne / Armored" />
+            </label>
+          </div>
+
+          <div class="grid-3">
+            <label>Kills
+              <input id="kills" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>Losses
+              <input id="losses" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>Score
+              <input id="score" type="number" min="0" step="1" value="0" />
+            </label>
+          </div>
+
+          <div class="grid-3">
+            <label>Duration min
+              <input id="duration" type="number" min="0" step="1" value="30" />
+            </label>
+            <label>APM
+              <input id="apm" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>Objective %
+              <input id="objective" type="number" min="0" max="100" step="1" value="50" />
+            </label>
+          </div>
+
+          <label>Notes
+            <textarea id="notes" placeholder="What worked, what failed, opener, late-game problem..."></textarea>
+          </label>
+
+          <div class="grid-2">
+            <button class="primary" type="submit">Save Match</button>
+            <button id="resetBtn" type="button">Reset</button>
+          </div>
+          <div id="saveStatus" class="save-status" aria-live="polite">Autosave ready</div>
+        </form>
+      </section>
+
+      <section class="dashboard" aria-label="Stats dashboard">
+        <div class="filters">
+          <label>Search
+            <input id="search" type="search" placeholder="Map, deck, notes..." />
+          </label>
+          <label>Result
+            <select id="resultFilter">
+              <option value="">All</option>
+              <option>Win</option>
+              <option>Loss</option>
+              <option>Draw</option>
+            </select>
+          </label>
+          <label>Faction
+            <select id="factionFilter">
+              <option value="">All</option>
+              <option>USA</option>
+              <option>Russia</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>Mode
+            <select id="modeFilter">
+              <option value="">All</option>
+              <option>1v1</option>
+              <option>2v2</option>
+              <option>3v3</option>
+              <option>4v4</option>
+              <option>5v5</option>
+              <option>10v10</option>
+              <option>Skirmish</option>
+              <option>Custom</option>
+            </select>
+          </label>
+          <label>Map
+            <select id="mapFilter">
+              <option value="">All</option>
+              <option>Parnu</option>
+              <option>Baltisk</option>
+              <option>Circyahopsk</option>
+              <option>Kaliningrad</option>
+              <option>Central Village</option>
+              <option>Frontiers</option>
+              <option>River</option>
+              <option>Refinery</option>
+              <option>Ruda</option>
+              <option>Dam</option>
+              <option>Airbase</option>
+              <option>Airport</option>
+              <option>Klaipeda</option>
+              <option>Yelgava Palace</option>
+              <option>Highway of Death</option>
+              <option>Dead Center</option>
+              <option>Kadaga Military Base</option>
+            </select>
+          </label>
+          <label>Sort
+            <select id="sortBy">
+              <option value="dateDesc">Newest</option>
+              <option value="dateAsc">Oldest</option>
+              <option value="scoreDesc">Score</option>
+              <option value="kdDesc">K/D</option>
+              <option value="durationDesc">Duration</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="summary" id="summary"></div>
+
+        <div class="insights">
+          <div class="insight-box">
+            <h2>Stats by Map</h2>
+            <div id="mapStats"></div>
+          </div>
+          <div class="insight-box">
+            <h2>Stats by Deck</h2>
+            <div id="deckStats"></div>
+          </div>
+          <div class="insight-box">
+            <h2>Public Users</h2>
+            <div id="userStats"></div>
+          </div>
+        </div>
+
+        <div class="charts">
+          <div class="chart-box">
+            <h2>Result Trend</h2>
+            <canvas id="trendCanvas" width="560" height="180" aria-label="Win loss trend chart"></canvas>
+          </div>
+          <div class="chart-box">
+            <h2>Faction Results</h2>
+            <canvas id="factionCanvas" width="560" height="180" aria-label="Faction result chart"></canvas>
+          </div>
+          <div class="chart-box wide">
+            <h2>Performance Timeline</h2>
+            <canvas id="performanceCanvas" width="1140" height="180" aria-label="Score objective APM duration timeline"></canvas>
+          </div>
+          <div class="chart-box">
+            <h2>Combat Balance</h2>
+            <canvas id="combatCanvas" width="560" height="180" aria-label="Kills losses and K/D chart"></canvas>
+          </div>
+          <div class="chart-box">
+            <h2>Map Performance</h2>
+            <canvas id="mapCanvas" width="560" height="180" aria-label="Map performance chart"></canvas>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Result</th>
+                <th>Mode</th>
+                <th>Faction</th>
+                <th>Map</th>
+                <th>K/D</th>
+                <th>Score</th>
+                <th>Duration</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="matchRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const sessionKey = "broken-arrow-session-token";
+    const serverSaveUrl = "/api/matches";
+
+    function getSharedUserId() {
+      return new URLSearchParams(location.search).get("user");
+    }
+    const fields = ["date", "mode", "faction", "opponentFaction", "map", "deck", "kills", "losses", "score", "duration", "apm", "objective", "notes"];
+    const state = {
+      user: null,
+      token: localStorage.getItem(sessionKey) || "",
+      matches: [],
+      publicUsers: [],
+      publicMatches: [],
+      viewMode: false,
+      authMode: "login",
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const today = new Date().toISOString().slice(0, 10);
+    $("date").value = today;
+
+    $("authForm").addEventListener("submit", handleAuthSubmit);
+    $("authModeBtn").addEventListener("click", toggleAuthMode);
+    $("viewSignInBtn").addEventListener("click", leavePublicView);
+    $("logoutBtn").addEventListener("click", logout);
+    $("publicProfile").addEventListener("change", updatePublicProfile);
+    $("copyShareBtn").addEventListener("click", copyShareLink);
+    $("matchForm").addEventListener("submit", saveMatch);
+    $("resetBtn").addEventListener("click", resetForm);
+    $("clearBtn").addEventListener("click", clearMatches);
+    $("sampleBtn").addEventListener("click", loadSample);
+    $("exportBtn").addEventListener("click", exportCsv);
+    $("importFile").addEventListener("change", importCsv);
+    $("matchForm").addEventListener("input", saveDraft);
+    $("matchForm").addEventListener("change", saveDraft);
+
+    ["search", "resultFilter", "factionFilter", "modeFilter", "mapFilter", "sortBy"].forEach((id) => {
+      $(id).addEventListener("input", render);
+    });
+
+    initApp();
+
+    function storeKey() {
+      return `broken-arrow-stats-v1-${state.user?.id || "guest"}`;
+    }
+
+    function draftKey() {
+      return `broken-arrow-stats-draft-v1-${state.user?.id || "guest"}`;
+    }
+
+    function authHeaders(extra = {}) {
+      const headers = { ...extra };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+      return headers;
+    }
+
+    async function apiFetch(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: authHeaders(options.headers || {}),
+      });
+      if (response.status === 401 && state.token) {
+        clearSession();
+        showAuthOverlay();
+        throw new Error("Session expired. Please sign in again.");
+      }
+      return response;
+    }
+
+    async function initApp() {
+      const sharedUserId = getSharedUserId();
+      if (sharedUserId) {
+        await enterPublicView(sharedUserId);
+        return;
+      }
+      if (!state.token) {
+        showAuthOverlay();
+        return;
+      }
+      try {
+        const response = await apiFetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) throw new Error("Invalid session");
+        state.user = await response.json();
+        await enterApp();
+      } catch {
+        clearSession();
+        showAuthOverlay();
+      }
+    }
+
+    async function enterPublicView(userId) {
+      try {
+        const [matchesResponse, publicResponse] = await Promise.all([
+          fetch(`/api/matches?userId=${encodeURIComponent(userId)}`, { cache: "no-store" }),
+          fetch("/api/public", { cache: "no-store" }),
+        ]);
+        if (!matchesResponse.ok) throw new Error("This profile is private or does not exist.");
+        const payload = publicResponse.ok ? await publicResponse.json() : { users: [], matches: [] };
+        state.publicUsers = Array.isArray(payload.users) ? payload.users : [];
+        state.publicMatches = Array.isArray(payload.matches) ? payload.matches : [];
+        state.user = state.publicUsers.find((user) => user.id === userId) || { id: userId, name: "Player", public: true };
+        state.matches = await matchesResponse.json();
+        state.viewMode = true;
+        document.body.classList.add("view-mode");
+        $("viewBannerName").textContent = state.user.name;
+        $("viewBanner").classList.remove("hidden");
+        hideAuthOverlay();
+        render();
+      } catch (error) {
+        state.viewMode = false;
+        document.body.classList.remove("view-mode");
+        $("viewBanner").classList.add("hidden");
+        showAuthOverlay();
+        $("authError").textContent = error.message || "Could not load shared profile.";
+      }
+    }
+
+    function leavePublicView() {
+      history.replaceState({}, "", location.pathname);
+      state.viewMode = false;
+      state.matches = [];
+      document.body.classList.remove("view-mode");
+      $("viewBanner").classList.add("hidden");
+      initApp();
+    }
+
+    function showAuthOverlay() {
+      $("authOverlay").classList.remove("hidden");
+      $("appRoot").classList.add("hidden");
+      $("authError").textContent = "";
+    }
+
+    function hideAuthOverlay() {
+      $("authOverlay").classList.add("hidden");
+      $("appRoot").classList.remove("hidden");
+    }
+
+    function setAuthMode(mode) {
+      state.authMode = mode;
+      $("authTitle").textContent = mode === "login" ? "Sign In" : "Create Account";
+      $("authSubtitle").textContent = mode === "login"
+        ? "Log in to track your Broken Arrow matches. Each player has their own account and stats."
+        : "Create a personal account with a username and password. Your match history stays private unless you enable a public profile.";
+      $("authSubmitBtn").textContent = mode === "login" ? "Sign In" : "Create Account";
+      $("authSwitchText").textContent = mode === "login" ? "Need an account?" : "Already have an account?";
+      $("authModeBtn").textContent = mode === "login" ? "Create one" : "Sign in";
+      $("confirmPasswordWrap").classList.toggle("hidden", mode !== "register");
+      $("authPassword").autocomplete = mode === "login" ? "current-password" : "new-password";
+      $("authError").textContent = "";
+    }
+
+    function toggleAuthMode() {
+      setAuthMode(state.authMode === "login" ? "register" : "login");
+    }
+
+    async function handleAuthSubmit(event) {
+      event.preventDefault();
+      const username = $("authUsername").value.trim();
+      const password = $("authPassword").value;
+      const confirm = $("authPasswordConfirm").value;
+      if (!username || !password) {
+        $("authError").textContent = "Username and password are required.";
+        return;
+      }
+      if (state.authMode === "register" && password !== confirm) {
+        $("authError").textContent = "Passwords do not match.";
+        return;
+      }
+      const endpoint = state.authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      $("authSubmitBtn").disabled = true;
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Authentication failed");
+        state.token = payload.token;
+        state.user = payload.user;
+        localStorage.setItem(sessionKey, state.token);
+        $("authForm").reset();
+        await enterApp();
+      } catch (error) {
+        $("authError").textContent = error.message || "Authentication failed";
+      } finally {
+        $("authSubmitBtn").disabled = false;
+      }
+    }
+
+    async function enterApp() {
+      state.viewMode = false;
+      document.body.classList.remove("view-mode");
+      $("viewBanner").classList.add("hidden");
+      hideAuthOverlay();
+      $("currentUserName").textContent = state.user.name;
+      $("publicProfile").checked = Boolean(state.user.public);
+      state.matches = loadMatches();
+      restoreDraft();
+      render();
+      await Promise.all([loadServerMatches(), loadPublicUsers()]);
+    }
+
+    function clearSession() {
+      state.token = "";
+      state.user = null;
+      localStorage.removeItem(sessionKey);
+    }
+
+    async function logout() {
+      try {
+        await apiFetch("/api/auth/logout", { method: "POST" });
+      } catch {
+        // Ignore network errors during logout.
+      }
+      clearSession();
+      state.matches = [];
+      resetForm();
+      setAuthMode("login");
+      showAuthOverlay();
+    }
+
+    async function updatePublicProfile() {
+      if (!state.user) return;
+      try {
+        const response = await apiFetch("/api/users/public", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ public: $("publicProfile").checked }),
+        });
+        if (!response.ok) throw new Error("Could not update profile visibility");
+        state.user = await response.json();
+        await loadPublicUsers();
+        render();
+        showSaveStatus("Profile visibility updated", "ok");
+      } catch (error) {
+        $("publicProfile").checked = Boolean(state.user.public);
+        showSaveStatus(error.message || "Profile update failed", "error");
+      }
+    }
+
+    async function copyShareLink() {
+      if (!state.user?.public) {
+        showSaveStatus("Enable public profile to share stats", "error");
+        return;
+      }
+      const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(state.user.id)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        showSaveStatus("Share link copied", "ok");
+      } catch {
+        showSaveStatus(url, "ok");
+      }
+    }
+
+    async function loadPublicUsers() {
+      try {
+        const response = await fetch("/api/public", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        state.publicUsers = Array.isArray(payload.users) ? payload.users : [];
+        state.publicMatches = Array.isArray(payload.matches) ? payload.matches : [];
+      } catch {
+        state.publicUsers = [];
+        state.publicMatches = [];
+      }
+    }
+
+    function loadMatches() {
+      try {
+        return JSON.parse(localStorage.getItem(storeKey())) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function persist() {
+      try {
+        localStorage.setItem(storeKey(), JSON.stringify(state.matches));
+        saveToServer();
+        showSaveStatus("Saved locally, syncing file...", "ok");
+        return true;
+      } catch {
+        showSaveStatus("Save failed: browser storage is full or blocked", "error");
+        return false;
+      }
+    }
+
+    async function loadServerMatches() {
+      if (!state.user) return;
+      try {
+        const response = await apiFetch(`${serverSaveUrl}?userId=${encodeURIComponent(state.user.id)}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const serverMatches = await response.json();
+        if (!Array.isArray(serverMatches)) return;
+        if (serverMatches.length) {
+          state.matches = mergeMatches(state.matches, serverMatches);
+          localStorage.setItem(storeKey(), JSON.stringify(state.matches));
+          render();
+          showSaveStatus("Loaded saved matches", "ok");
+        } else if (state.matches.length) {
+          saveToServer();
+        }
+      } catch {
+        showSaveStatus("Using browser save only", "");
+      }
+    }
+
+    async function saveToServer() {
+      if (!state.user) return;
+      try {
+        const response = await apiFetch(serverSaveUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(state.matches),
+        });
+        if (!response.ok) throw new Error("Server save failed");
+        showSaveStatus("Saved to server", "ok");
+      } catch {
+        showSaveStatus("Saved in browser, server sync failed", "error");
+      }
+    }
+
+    function mergeMatches(localMatches, serverMatches) {
+      const byId = new Map();
+      [...serverMatches, ...localMatches].forEach((match) => {
+        if (!match || !match.id) return;
+        const current = byId.get(match.id);
+        if (!current || String(match.updatedAt || "") >= String(current.updatedAt || "")) {
+          byId.set(match.id, match);
+        }
+      });
+      return [...byId.values()];
+    }
+
+    function getResult() {
+      return document.querySelector("input[name='result']:checked").value;
+    }
+
+    function setResult(value) {
+      const result = document.querySelector(`input[name='result'][value='${value}']`);
+      if (result) result.checked = true;
+    }
+
+    function readForm(assignId = true) {
+      const data = Object.fromEntries(fields.map((id) => [id, $(id).value.trim()]));
+      ["kills", "losses", "score", "duration", "apm", "objective"].forEach((id) => {
+        data[id] = Number(data[id]) || 0;
+      });
+      data.result = getResult();
+      data.id = $("editingId").value || (assignId ? crypto.randomUUID() : "");
+      data.updatedAt = new Date().toISOString();
+      return data;
+    }
+
+    function saveMatch(event) {
+      event.preventDefault();
+      const match = readForm();
+      const index = state.matches.findIndex((item) => item.id === match.id);
+      if (index >= 0) state.matches[index] = match;
+      else state.matches.push(match);
+      if (persist()) {
+        clearDraft();
+        resetForm();
+        showSaveStatus("Match saved", "ok");
+        render();
+      }
+    }
+
+    function resetForm() {
+      $("matchForm").reset();
+      $("date").value = today;
+      $("editingId").value = "";
+      $("formTitle").textContent = "Add Match";
+      $("duration").value = 30;
+      $("objective").value = 50;
+      clearDraft();
+    }
+
+    function saveDraft() {
+      if (!state.user) return;
+      try {
+        localStorage.setItem(draftKey(), JSON.stringify(readForm(false)));
+        showSaveStatus("Draft saved", "ok");
+      } catch {
+        showSaveStatus("Draft save failed", "error");
+      }
+    }
+
+    function restoreDraft() {
+      try {
+        const draft = JSON.parse(localStorage.getItem(draftKey()));
+        if (!draft) return;
+        fields.forEach((field) => {
+          if (draft[field] !== undefined) $(field).value = draft[field];
+        });
+        if (draft.result) setResult(draft.result);
+        if (draft.id) $("editingId").value = draft.id;
+        $("formTitle").textContent = draft.id ? "Edit Match" : "Add Match";
+        showSaveStatus("Draft restored", "ok");
+      } catch {
+        clearDraft();
+      }
+    }
+
+    function clearDraft() {
+      localStorage.removeItem(draftKey());
+    }
+
+    function showSaveStatus(message, kind = "") {
+      const status = $("saveStatus");
+      status.textContent = message;
+      status.className = `save-status ${kind}`.trim();
+    }
+
+    function editMatch(id) {
+      const match = state.matches.find((item) => item.id === id);
+      if (!match) return;
+      fields.forEach((field) => $(field).value = match[field] ?? "");
+      setResult(match.result);
+      $("editingId").value = match.id;
+      $("formTitle").textContent = "Edit Match";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function deleteMatch(id) {
+      state.matches = state.matches.filter((item) => item.id !== id);
+      persist();
+      render();
+    }
+
+    function clearMatches() {
+      if (!state.matches.length) return;
+      if (!confirm("Delete all saved Broken Arrow matches?")) return;
+      state.matches = [];
+      persist();
+      resetForm();
+      render();
+    }
+
+    function filteredMatches() {
+      const search = $("search").value.trim().toLowerCase();
+      const result = $("resultFilter").value;
+      const faction = $("factionFilter").value;
+      const mode = $("modeFilter").value;
+      const map = $("mapFilter").value;
+      let matches = state.matches.filter((match) => {
+        const haystack = [match.map, match.deck, match.notes, match.opponentFaction].join(" ").toLowerCase();
+        return (!search || haystack.includes(search))
+          && (!result || match.result === result)
+          && (!faction || match.faction === faction)
+          && (!mode || match.mode === mode)
+          && (!map || match.map === map);
+      });
+      const sort = $("sortBy").value;
+      matches = matches.slice().sort((a, b) => {
+        if (sort === "dateAsc") return a.date.localeCompare(b.date);
+        if (sort === "scoreDesc") return b.score - a.score;
+        if (sort === "kdDesc") return kd(b) - kd(a);
+        if (sort === "durationDesc") return b.duration - a.duration;
+        return b.date.localeCompare(a.date);
+      });
+      return matches;
+    }
+
+    function kd(match) {
+      return match.losses > 0 ? match.kills / match.losses : match.kills;
+    }
+
+    function pct(value) {
+      return `${Math.round(value * 100)}%`;
+    }
+
+    function average(matches, field) {
+      if (!matches.length) return 0;
+      return matches.reduce((sum, match) => sum + Number(match[field] || 0), 0) / matches.length;
+    }
+
+    function render() {
+      const matches = filteredMatches();
+      renderSummary(matches);
+      renderTable(matches);
+      renderInsightTables(matches);
+      drawTrend(matches);
+      drawFactions(matches);
+      drawPerformance(matches);
+      drawCombat(matches);
+      drawMaps(matches);
+    }
+
+    function renderInsightTables(matches) {
+      renderGroupedStats("mapStats", matches, (match) => match.map || "Unknown");
+      renderGroupedStats("deckStats", matches, (match) => match.deck || "No deck");
+      renderPublicUsers();
+    }
+
+    function renderGroupedStats(elementId, matches, groupBy) {
+      const target = $(elementId);
+      if (!matches.length) {
+        target.innerHTML = `<div class="muted">No data yet</div>`;
+        return;
+      }
+      const groups = [...new Set(matches.map(groupBy))].map((label) => {
+        const groupMatches = matches.filter((match) => groupBy(match) === label);
+        const wins = groupMatches.filter((match) => match.result === "Win").length;
+        return { label, total: groupMatches.length, wins };
+      }).sort((a, b) => b.total - a.total || b.wins - a.wins).slice(0, 8);
+      target.innerHTML = `
+        <table class="mini-table">
+          <thead><tr><th>Name</th><th>Record</th><th>Win %</th></tr></thead>
+          <tbody>
+            ${groups.map((group) => `
+              <tr>
+                <td>${escapeHtml(group.label)}</td>
+                <td>${group.wins}-${group.total - group.wins}</td>
+                <td>${pct(group.wins / group.total)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderPublicUsers() {
+      const target = $("userStats");
+      const publicMatches = state.publicMatches || [];
+      if (!state.publicUsers.length) {
+        target.innerHTML = `<div class="muted">No public profiles yet</div>`;
+        return;
+      }
+      const rows = state.publicUsers.map((user) => {
+        const userMatches = publicMatches.filter((match) => match.userId === user.id);
+        const wins = userMatches.filter((match) => match.result === "Win").length;
+        const total = userMatches.length;
+        return { name: user.name, total, wins };
+      }).sort((a, b) => b.total - a.total);
+      target.innerHTML = `
+        <table class="mini-table">
+          <thead><tr><th>Player</th><th>Matches</th><th>Win %</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.name)}</td>
+                <td>${row.total}</td>
+                <td>${row.total ? pct(row.wins / row.total) : "0%"}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderSummary(matches) {
+      const wins = matches.filter((match) => match.result === "Win").length;
+      const losses = matches.filter((match) => match.result === "Loss").length;
+      const total = matches.length;
+      const winRate = total ? wins / total : 0;
+      const avgKd = total ? matches.reduce((sum, match) => sum + kd(match), 0) / total : 0;
+      $("summary").innerHTML = [
+        statCard("Matches", total),
+        statCard("Win Rate", pct(winRate)),
+        statCard("Record", `${wins}-${losses}-${total - wins - losses}`),
+        statCard("Avg K/D", avgKd.toFixed(2)),
+        statCard("Avg Score", Math.round(average(matches, "score"))),
+      ].join("");
+    }
+
+    function statCard(label, value) {
+      return `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`;
+    }
+
+    function renderTable(matches) {
+      const rows = $("matchRows");
+      if (!matches.length) {
+        rows.innerHTML = `<tr><td colspan="10" class="muted">No matches yet. Add one on the left or load sample data.</td></tr>`;
+        return;
+      }
+      rows.innerHTML = matches.map((match) => {
+        const resultClass = match.result.toLowerCase();
+        return `
+          <tr>
+            <td>${escapeHtml(match.date)}</td>
+            <td><span class="pill ${resultClass}">${escapeHtml(match.result)}</span></td>
+            <td>${escapeHtml(match.mode)}</td>
+            <td>${escapeHtml(match.faction)} <span class="muted">vs ${escapeHtml(match.opponentFaction)}</span></td>
+            <td>${escapeHtml(match.map || "-")}<br><span class="muted">${escapeHtml(match.deck || "")}</span></td>
+            <td>${escapeHtml(match.kills)} / ${escapeHtml(match.losses)}<br><span class="muted">${kd(match).toFixed(2)}</span></td>
+            <td>${escapeHtml(match.score)}</td>
+            <td>${escapeHtml(match.duration)}m<br><span class="muted">${escapeHtml(match.apm)} APM</span></td>
+            <td>${escapeHtml(match.notes || "-")}</td>
+            <td>${state.viewMode ? `<span class="muted">View only</span>` : `<div class="row-actions">
+              <button class="icon-btn" title="Edit match" onclick="editMatch('${match.id}')">Edit</button>
+              <button class="icon-btn danger" title="Delete match" onclick="deleteMatch('${match.id}')">Del</button>
+            </div>`}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function drawTrend(matches) {
+      const canvas = $("trendCanvas");
+      const ctx = canvas.getContext("2d");
+      prepCanvas(canvas, ctx);
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      const ordered = matches.slice().sort((a, b) => a.date.localeCompare(b.date)).slice(-20);
+      drawFrame(ctx, canvas, "Last 20 matches");
+      if (!ordered.length) return drawEmpty(ctx, canvas);
+      const padding = 28;
+      const step = ordered.length > 1 ? (width - padding * 2) / (ordered.length - 1) : 0;
+      const points = ordered.map((match, index) => {
+        const value = match.result === "Win" ? 1 : match.result === "Draw" ? .5 : 0;
+        return { x: padding + index * step, y: height - padding - value * (height - padding * 2), value };
+      });
+      ctx.strokeStyle = "#f2c14e";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.stroke();
+      points.forEach((point) => {
+        ctx.fillStyle = point.value === 1 ? "#5ec88c" : point.value === .5 ? "#6fb1e8" : "#e66b63";
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawFactions(matches) {
+      const canvas = $("factionCanvas");
+      const ctx = canvas.getContext("2d");
+      prepCanvas(canvas, ctx);
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      drawFrame(ctx, canvas, "Win rate by faction");
+      if (!matches.length) return drawEmpty(ctx, canvas);
+      const groups = [...new Set(matches.map((match) => match.faction))].map((faction) => {
+        const factionMatches = matches.filter((match) => match.faction === faction);
+        return { faction, total: factionMatches.length, wins: factionMatches.filter((match) => match.result === "Win").length };
+      });
+      const max = Math.max(...groups.map((group) => group.total), 1);
+      const barWidth = Math.min(82, (width - 80) / groups.length - 14);
+      groups.forEach((group, index) => {
+        const x = 44 + index * ((width - 88) / groups.length);
+        const height = (group.total / max) * 92;
+        const y = canvas.logicalHeight - 34 - height;
+        ctx.fillStyle = "#2b342d";
+        ctx.fillRect(x, canvas.logicalHeight - 126, barWidth, 92);
+        ctx.fillStyle = "#5ec88c";
+        ctx.fillRect(x, y, barWidth, height);
+        ctx.fillStyle = "#f2f5ee";
+        ctx.font = "13px Segoe UI, sans-serif";
+        ctx.fillText(group.faction, x, canvas.logicalHeight - 14);
+        ctx.fillStyle = "#aab3a7";
+        ctx.fillText(`${pct(group.wins / group.total)} (${group.total})`, x, y - 8);
+      });
+    }
+
+    function drawPerformance(matches) {
+      const canvas = $("performanceCanvas");
+      const ctx = canvas.getContext("2d");
+      prepCanvas(canvas, ctx);
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      const ordered = matches.slice().sort((a, b) => a.date.localeCompare(b.date)).slice(-20);
+      drawFrame(ctx, canvas, "Score, objective, APM, and duration across recent matches");
+      if (!ordered.length) return drawEmpty(ctx, canvas);
+      const series = [
+        { label: "Score", field: "score", color: "#f2c14e" },
+        { label: "Objective", field: "objective", color: "#5ec88c" },
+        { label: "APM", field: "apm", color: "#6fb1e8" },
+        { label: "Duration", field: "duration", color: "#e66b63" },
+      ];
+      const padding = { left: 34, right: 18, top: 32, bottom: 30 };
+      series.forEach((line, lineIndex) => {
+        const values = ordered.map((match) => Number(match[line.field]) || 0);
+        const max = Math.max(...values, 1);
+        const step = ordered.length > 1 ? (width - padding.left - padding.right) / (ordered.length - 1) : 0;
+        ctx.strokeStyle = line.color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        values.forEach((value, index) => {
+          const x = padding.left + index * step;
+          const y = height - padding.bottom - (value / max) * (height - padding.top - padding.bottom);
+          index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+        ctx.fillStyle = line.color;
+        ctx.font = "12px Segoe UI, sans-serif";
+        ctx.fillText(line.label, padding.left + lineIndex * 92, height - 8);
+      });
+    }
+
+    function drawCombat(matches) {
+      const canvas = $("combatCanvas");
+      const ctx = canvas.getContext("2d");
+      prepCanvas(canvas, ctx);
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      drawFrame(ctx, canvas, "Average kills, losses, and K/D");
+      if (!matches.length) return drawEmpty(ctx, canvas);
+      const stats = [
+        { label: "Kills", value: average(matches, "kills"), color: "#5ec88c" },
+        { label: "Losses", value: average(matches, "losses"), color: "#e66b63" },
+        { label: "K/D", value: matches.reduce((sum, match) => sum + kd(match), 0) / matches.length, color: "#f2c14e" },
+      ];
+      const max = Math.max(...stats.map((item) => item.value), 1);
+      const barArea = width - 82;
+      stats.forEach((item, index) => {
+        const y = 48 + index * 38;
+        const barWidth = Math.max(4, (item.value / max) * barArea);
+        ctx.fillStyle = "#2b342d";
+        ctx.fillRect(64, y, barArea, 20);
+        ctx.fillStyle = item.color;
+        ctx.fillRect(64, y, barWidth, 20);
+        ctx.fillStyle = "#f2f5ee";
+        ctx.font = "12px Segoe UI, sans-serif";
+        ctx.fillText(item.label, 34, y + 15);
+        ctx.fillText(item.value.toFixed(item.label === "K/D" ? 2 : 0), 70 + barWidth, y + 15);
+      });
+    }
+
+    function drawMaps(matches) {
+      const canvas = $("mapCanvas");
+      const ctx = canvas.getContext("2d");
+      prepCanvas(canvas, ctx);
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      drawFrame(ctx, canvas, "Top maps by win rate");
+      if (!matches.length) return drawEmpty(ctx, canvas);
+      const groups = [...new Set(matches.map((match) => match.map || "Unknown"))].map((map) => {
+        const mapMatches = matches.filter((match) => (match.map || "Unknown") === map);
+        return {
+          map,
+          total: mapMatches.length,
+          winRate: mapMatches.filter((match) => match.result === "Win").length / mapMatches.length,
+        };
+      }).sort((a, b) => b.winRate - a.winRate || b.total - a.total).slice(0, 5);
+      const barArea = width - 120;
+      groups.forEach((group, index) => {
+        const y = 42 + index * 25;
+        const barWidth = Math.max(4, group.winRate * barArea);
+        ctx.fillStyle = "#2b342d";
+        ctx.fillRect(96, y, barArea, 15);
+        ctx.fillStyle = group.winRate >= .5 ? "#5ec88c" : "#e66b63";
+        ctx.fillRect(96, y, barWidth, 15);
+        ctx.fillStyle = "#f2f5ee";
+        ctx.font = "12px Segoe UI, sans-serif";
+        ctx.fillText(trimLabel(group.map, 12), 34, y + 12);
+        ctx.fillStyle = "#aab3a7";
+        ctx.fillText(`${pct(group.winRate)} (${group.total})`, Math.min(102 + barWidth, width - 70), y + 12);
+      });
+    }
+
+    function trimLabel(value, maxLength) {
+      const text = String(value || "");
+      return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+    }
+
+    function prepCanvas(canvas, ctx) {
+      const scale = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.logicalWidth = Math.max(1, rect.width);
+      canvas.logicalHeight = Math.max(1, rect.height);
+      canvas.width = Math.floor(canvas.logicalWidth * scale);
+      canvas.height = Math.floor(canvas.logicalHeight * scale);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.clearRect(0, 0, canvas.logicalWidth, canvas.logicalHeight);
+    }
+
+    function drawFrame(ctx, canvas, label) {
+      const width = canvas.logicalWidth;
+      const height = canvas.logicalHeight;
+      ctx.fillStyle = "#121613";
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "#364037";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(28, 20);
+      ctx.lineTo(28, height - 28);
+      ctx.lineTo(width - 14, height - 28);
+      ctx.stroke();
+      ctx.fillStyle = "#aab3a7";
+      ctx.font = "12px Segoe UI, sans-serif";
+      ctx.fillText(label, 34, 16);
+    }
+
+    function drawEmpty(ctx, canvas) {
+      const width = canvas.logicalWidth;
+      ctx.fillStyle = "#aab3a7";
+      ctx.font = "14px Segoe UI, sans-serif";
+      ctx.fillText("No filtered data", Math.min(34, width - 120), 72);
+    }
+
+    function loadSample() {
+      const sample = [
+        ["2026-06-02", "2v2", "Win", "USA", "Russia", "Parnu", "Airborne opener", 48, 29, 2850, 38, 76, 62, "Strong heli timing. Keep AA screened earlier."],
+        ["2026-06-03", "1v1", "Loss", "Russia", "USA", "River", "Armored grind", 31, 42, 1900, 44, 58, 41, "Lost mid bridge after overbuying tanks."],
+        ["2026-06-04", "3v3", "Win", "USA", "Russia", "Airbase", "Mech support", 64, 47, 3300, 51, 82, 70, "Good recon discipline. Artillery paid off."],
+        ["2026-06-05", "10v10", "Draw", "Russia", "USA", "Baltisk", "Air defense net", 77, 74, 2650, 57, 49, 53, "Held flank, needed more objective pressure."],
+        ["2026-06-06", "2v2", "Win", "USA", "Russia", "Klaipeda", "Marine push", 52, 35, 3010, 36, 71, 67, "Fast infantry pressure set the pace."],
+      ].map(([date, mode, result, faction, opponentFaction, map, deck, kills, losses, score, duration, apm, objective, notes]) => ({
+        id: crypto.randomUUID(), date, mode, result, faction, opponentFaction, map, deck, kills, losses, score, duration, apm, objective, notes, updatedAt: new Date().toISOString()
+      }));
+      state.matches = state.matches.concat(sample);
+      persist();
+      render();
+    }
+
+    function exportCsv() {
+      const columns = ["date", "mode", "result", "faction", "opponentFaction", "map", "deck", "kills", "losses", "score", "duration", "apm", "objective", "notes"];
+      const csv = [columns.join(","), ...state.matches.map((match) => columns.map((column) => csvCell(match[column])).join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `broken-arrow-stats-${today}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importCsv(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const imported = parseCsv(String(reader.result));
+        state.matches = state.matches.concat(imported);
+        persist();
+        render();
+        event.target.value = "";
+      };
+      reader.readAsText(file);
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [], cell = "", quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i], next = text[i + 1];
+        if (char === '"' && quoted && next === '"') { cell += '"'; i++; }
+        else if (char === '"') quoted = !quoted;
+        else if (char === "," && !quoted) { row.push(cell); cell = ""; }
+        else if ((char === "\n" || char === "\r") && !quoted) {
+          if (char === "\r" && next === "\n") i++;
+          row.push(cell); rows.push(row); row = []; cell = "";
+        } else cell += char;
+      }
+      if (cell || row.length) { row.push(cell); rows.push(row); }
+      const [header, ...dataRows] = rows.filter((item) => item.length > 1);
+      if (!header) return [];
+      return dataRows.map((rowValues) => {
+        const item = { id: crypto.randomUUID(), updatedAt: new Date().toISOString() };
+        header.forEach((column, index) => item[column] = rowValues[index] || "");
+        ["kills", "losses", "score", "duration", "apm", "objective"].forEach((field) => item[field] = Number(item[field]) || 0);
+        return item;
+      });
+    }
+
+    function csvCell(value) {
+      return `"${String(value ?? "").replaceAll('"', '""')}"`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      }[char]));
+    }
+
+    window.addEventListener("resize", render);
+  </script>
+</body>
+</html>

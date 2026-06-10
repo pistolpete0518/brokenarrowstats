@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+.DS_Store
+work/*.png
+work/broken-arrow-visual-test.html
