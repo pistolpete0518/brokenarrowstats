@@ -90,7 +90,7 @@
       margin: 0 auto;
       padding: 0 18px 14px;
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) auto auto auto auto;
+      grid-template-columns: minmax(180px, 1fr) auto auto auto;
       gap: 10px;
       align-items: end;
     }
@@ -823,28 +823,26 @@
           Public profile
         </label>
         <button id="copyShareBtn" type="button">Copy Share Link</button>
-        <button id="adminBtn" type="button" class="hidden">Admin</button>
         <button id="logoutBtn" type="button" class="ghost">Log Out</button>
       </div>
       <nav class="app-tabs" aria-label="Dashboard tabs">
         <button id="statsTabBtn" type="button" class="tab active">My Stats</button>
         <button id="compareTabBtn" type="button" class="tab">Compare</button>
+        <button id="adminTabBtn" type="button" class="tab hidden">Admin</button>
       </nav>
     </header>
 
     <section id="adminPanel" class="admin-panel hidden" aria-label="Admin dashboard">
-      <div class="admin-toolbar">
-        <div>
-          <h2>Admin Dashboard</h2>
-          <div class="subhead">Manage users, roles, and match data</div>
-        </div>
-        <button id="adminBackBtn" type="button">Back to Stats</button>
+      <div>
+        <h2>Admin</h2>
+        <p class="subhead">Only you and admins you assign can see this tab. Create accounts for players, promote admins, and remove users or their stats.</p>
       </div>
 
       <div class="admin-grid" id="adminSummary"></div>
 
       <div class="admin-box">
-        <h2>Create User</h2>
+        <h2>Create Account For User</h2>
+        <p class="subhead">Register a player on their behalf. Give them the username and password you set here.</p>
         <form id="adminCreateForm" class="admin-form">
           <div class="grid-2">
             <label>Username
@@ -1168,11 +1166,10 @@
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
     $("copyShareBtn").addEventListener("click", copyShareLink);
-    $("adminBtn").addEventListener("click", openAdminPanel);
-    $("adminBackBtn").addEventListener("click", closeAdminPanel);
     $("adminCreateForm").addEventListener("submit", adminCreateUser);
     $("statsTabBtn").addEventListener("click", openStatsTab);
     $("compareTabBtn").addEventListener("click", openCompareTab);
+    $("adminTabBtn").addEventListener("click", openAdminTab);
     $("comparePlayerA").addEventListener("change", renderCompare);
     $("comparePlayerB").addEventListener("change", renderCompare);
     $("matchForm").addEventListener("submit", saveMatch);
@@ -1362,10 +1359,10 @@
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
       hideAuthOverlay();
-      closeAdminPanel();
+      openStatsTab();
       $("currentUserName").textContent = state.user.name;
       $("publicProfile").checked = Boolean(state.user.public);
-      $("adminBtn").classList.toggle("hidden", state.user.role !== "admin");
+      updateAdminTabVisibility();
       state.matches = loadMatches();
       restoreDraft();
       render();
@@ -1378,24 +1375,18 @@
       }
     }
 
-    function openAdminPanel() {
-      if (state.user?.role !== "admin") return;
-      $("playerMain").classList.add("hidden");
-      $("comparePanel").classList.add("hidden");
-      $("adminPanel").classList.remove("hidden");
-      loadAdminDashboard();
-    }
-
-    function closeAdminPanel() {
-      $("adminPanel").classList.add("hidden");
-      $("playerMain").classList.remove("hidden");
-      $("comparePanel").classList.add("hidden");
-      setActiveTab("stats");
+    function updateAdminTabVisibility() {
+      const isAdmin = state.user?.role === "admin" && !state.viewMode;
+      $("adminTabBtn").classList.toggle("hidden", !isAdmin);
+      if (!isAdmin && !$("adminPanel").classList.contains("hidden")) {
+        openStatsTab();
+      }
     }
 
     function setActiveTab(tab) {
       $("statsTabBtn").classList.toggle("active", tab === "stats");
       $("compareTabBtn").classList.toggle("active", tab === "compare");
+      $("adminTabBtn").classList.toggle("active", tab === "admin");
     }
 
     function openStatsTab() {
@@ -1406,12 +1397,22 @@
     }
 
     function openCompareTab() {
+      if (state.viewMode) return;
       $("adminPanel").classList.add("hidden");
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.remove("hidden");
       setActiveTab("compare");
       populateCompareSelects();
       renderCompare();
+    }
+
+    function openAdminTab() {
+      if (state.user?.role !== "admin" || state.viewMode) return;
+      $("playerMain").classList.add("hidden");
+      $("comparePanel").classList.add("hidden");
+      $("adminPanel").classList.remove("hidden");
+      setActiveTab("admin");
+      loadAdminDashboard();
     }
 
     function comparePlayerOptions() {
@@ -1618,8 +1619,11 @@
           <td>
             <div class="row-actions">
               <button class="icon-btn" type="button" onclick="adminEditUser('${user.id}')">Edit</button>
+              ${user.role === "admin"
+                ? `<button class="icon-btn" type="button" onclick="adminSetRole('${user.id}', 'user')">Revoke Admin</button>`
+                : `<button class="icon-btn" type="button" onclick="adminSetRole('${user.id}', 'admin')">Make Admin</button>`}
               <button class="icon-btn" type="button" onclick="adminClearUserStats('${user.id}')">Clear Stats</button>
-              <button class="icon-btn danger" type="button" onclick="adminDeleteUser('${user.id}')">Delete</button>
+              <button class="icon-btn danger" type="button" onclick="adminDeleteUser('${user.id}')">Delete User</button>
             </div>
           </td>
         </tr>
@@ -1680,10 +1684,33 @@
           state.user = result;
           $("currentUserName").textContent = state.user.name;
           $("publicProfile").checked = Boolean(state.user.public);
-          $("adminBtn").classList.toggle("hidden", state.user.role !== "admin");
+          updateAdminTabVisibility();
         }
       } catch (error) {
         alert(error.message || "Update failed");
+      }
+    }
+
+    async function adminSetRole(userId, role) {
+      const user = (state.adminUsers || []).find((item) => item.id === userId);
+      if (!user) return;
+      const action = role === "admin" ? "promote this user to admin" : "remove admin access from this user";
+      if (!confirm(`Are you sure you want to ${action}?`)) return;
+      try {
+        const response = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not update role");
+        await loadAdminDashboard();
+        if (state.user?.id === userId) {
+          state.user = result;
+          updateAdminTabVisibility();
+        }
+      } catch (error) {
+        alert(error.message || "Role update failed");
       }
     }
 
