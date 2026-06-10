@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_salt TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user',
     public BOOLEAN NOT NULL DEFAULT TRUE,
+    country TEXT NOT NULL DEFAULT '',
+    profile_picture TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -129,6 +131,8 @@ class PostgresStore:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(SCHEMA_SQL)
+                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT ''")
+                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture TEXT NOT NULL DEFAULT ''")
             conn.commit()
 
     def _row_to_user(self, row):
@@ -139,8 +143,10 @@ class PostgresStore:
             "passwordSalt": row[3],
             "role": row[4],
             "public": bool(row[5]),
-            "createdAt": row[6],
-            "updatedAt": row[7],
+            "country": row[6] or "",
+            "profilePicture": row[7] or "",
+            "createdAt": row[8],
+            "updatedAt": row[9],
         }
 
     def read(self):
@@ -148,7 +154,10 @@ class PostgresStore:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, name, password_hash, password_salt, role, public, created_at, updated_at FROM users ORDER BY created_at"
+                    """
+                    SELECT id, name, password_hash, password_salt, role, public, country, profile_picture, created_at, updated_at
+                    FROM users ORDER BY created_at
+                    """
                 )
                 db["users"] = [self._row_to_user(row) for row in cur.fetchall()]
 
@@ -176,14 +185,16 @@ class PostgresStore:
                 for user in db.get("users", []):
                     cur.execute(
                         """
-                        INSERT INTO users (id, name, password_hash, password_salt, role, public, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO users (id, name, password_hash, password_salt, role, public, country, profile_picture, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO UPDATE SET
                             name = EXCLUDED.name,
                             password_hash = EXCLUDED.password_hash,
                             password_salt = EXCLUDED.password_salt,
                             role = EXCLUDED.role,
                             public = EXCLUDED.public,
+                            country = EXCLUDED.country,
+                            profile_picture = EXCLUDED.profile_picture,
                             updated_at = EXCLUDED.updated_at
                         """,
                         (
@@ -193,6 +204,8 @@ class PostgresStore:
                             user.get("passwordSalt", ""),
                             user.get("role", "user"),
                             bool(user.get("public", True)),
+                            user.get("country", "") or "",
+                            user.get("profilePicture", "") or "",
                             user.get("createdAt"),
                             user.get("updatedAt"),
                         ),

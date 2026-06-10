@@ -17,6 +17,8 @@ ROOT = Path(os.environ.get("BROKEN_ARROW_ROOT", Path(__file__).resolve().parents
 SESSION_DAYS = 30
 PBKDF2_ROUNDS = 120_000
 _DB_LOCK = threading.Lock()
+ALLOWED_COUNTRIES = {"us", "eu", "at", "au", "cn", "ru", "gb", "ie"}
+MAX_PROFILE_PICTURE_CHARS = 280_000
 
 
 def public_site_url():
@@ -81,9 +83,31 @@ def sanitize_user(user):
         "name": user["name"],
         "role": user_role(user),
         "public": bool(user.get("public", True)),
+        "country": str(user.get("country") or "").strip().lower(),
+        "profilePicture": str(user.get("profilePicture") or "").strip(),
         "createdAt": user.get("createdAt"),
         "updatedAt": user.get("updatedAt"),
     }
+
+
+def validate_country(country):
+    value = str(country or "").strip().lower()
+    if not value:
+        return ""
+    if value not in ALLOWED_COUNTRIES:
+        raise ValueError("Invalid country")
+    return value
+
+
+def validate_profile_picture(value):
+    picture = str(value or "").strip()
+    if not picture:
+        return ""
+    if not picture.startswith("data:image/"):
+        raise ValueError("Profile picture must be an image")
+    if len(picture) > MAX_PROFILE_PICTURE_CHARS:
+        raise ValueError("Profile picture is too large. Use an image under 200 KB.")
+    return picture
 
 
 def admin_user_row(user, db):
@@ -472,6 +496,23 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
                     if not auth_user:
                         raise ValueError("Unauthorized")
                     auth_user["public"] = bool(body.get("public", True))
+                    auth_user["updatedAt"] = now()
+                    return sanitize_user(auth_user)
+
+                self.send_json(update_db(mutate))
+                return
+
+            if path == "/api/users/profile":
+                def mutate(db):
+                    auth_user = get_session_user(db, token)
+                    if not auth_user:
+                        raise ValueError("Unauthorized")
+                    if "country" in body:
+                        auth_user["country"] = validate_country(body.get("country"))
+                    if body.get("clearProfilePicture"):
+                        auth_user["profilePicture"] = ""
+                    elif "profilePicture" in body:
+                        auth_user["profilePicture"] = validate_profile_picture(body.get("profilePicture"))
                     auth_user["updatedAt"] = now()
                     return sanitize_user(auth_user)
 

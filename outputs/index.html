@@ -436,6 +436,7 @@
     .admin-panel.hidden,
     .compare-panel.hidden,
     .top10-panel.hidden,
+    .profile-panel.hidden,
     #playerMain.hidden {
       display: none !important;
     }
@@ -733,12 +734,131 @@
     }
 
     .compare-panel,
-    .top10-panel {
+    .top10-panel,
+    .profile-panel {
       width: min(1440px, 100%);
       margin: 0 auto;
       padding: 18px;
       display: grid;
       gap: 16px;
+    }
+
+    .stats-profile-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(23, 27, 25, .95);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .stats-profile-inner,
+    .profile-preview-card {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .profile-preview-card h2,
+    .stats-profile-inner h2 {
+      margin: 0 0 6px;
+      font-size: 1.2rem;
+      color: var(--accent);
+    }
+
+    .profile-country {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .95rem;
+    }
+
+    .profile-country-flag {
+      font-size: 1.35rem;
+      line-height: 1;
+    }
+
+    .profile-avatar-img,
+    .profile-avatar-fallback {
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--line);
+      background: #111411;
+      flex-shrink: 0;
+    }
+
+    .profile-avatar-img.md,
+    .profile-avatar-fallback.md {
+      width: 56px;
+      height: 56px;
+    }
+
+    .profile-avatar-img.lg,
+    .profile-avatar-fallback.lg {
+      width: 72px;
+      height: 72px;
+    }
+
+    .profile-avatar-fallback {
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 1.4rem;
+    }
+
+    .profile-layout {
+      display: grid;
+      grid-template-columns: minmax(240px, 320px) 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .profile-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .profile-avatar-field {
+      display: grid;
+      gap: 10px;
+      justify-items: start;
+    }
+
+    .profile-avatar-preview .profile-avatar-img,
+    .profile-avatar-preview .profile-avatar-fallback {
+      width: 96px;
+      height: 96px;
+      font-size: 2rem;
+    }
+
+    .country-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+    }
+
+    .country-option {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111411;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .country-option.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(242, 193, 78, .12);
+      color: var(--accent);
+    }
+
+    .country-option .profile-country-flag {
+      font-size: 1.5rem;
     }
 
     .leaderboard-rank {
@@ -809,6 +929,9 @@
     }
 
     @media (max-width: 1100px) {
+      .profile-layout {
+        grid-template-columns: 1fr;
+      }
       main {
         grid-template-columns: 1fr;
       }
@@ -938,6 +1061,7 @@
       </div>
       <nav class="app-tabs" aria-label="Dashboard tabs">
         <button id="statsTabBtn" type="button" class="tab active">My Stats</button>
+        <button id="profileTabBtn" type="button" class="tab hidden owner-only">Profile</button>
         <button id="top10TabBtn" type="button" class="tab hidden">Top 10</button>
         <button id="compareTabBtn" type="button" class="tab">Compare</button>
         <button id="adminTabBtn" type="button" class="tab hidden">Admin</button>
@@ -996,6 +1120,36 @@
           </thead>
           <tbody id="adminUserRows"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="profilePanel" class="profile-panel hidden owner-only" aria-label="Profile settings">
+      <div>
+        <h2>Profile</h2>
+        <p class="subhead">Set your country of origin and profile picture. This appears on your stats page when your profile is public.</p>
+      </div>
+      <div class="profile-layout admin-box">
+        <div>
+          <h2>Preview</h2>
+          <div id="profilePreviewCard" class="profile-preview-card"></div>
+        </div>
+        <form id="profileForm" class="profile-form">
+          <div class="profile-avatar-field">
+            <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
+            <label class="file-label">Upload profile picture
+              <input id="profilePictureFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            </label>
+            <button id="clearProfilePictureBtn" type="button" class="ghost">Remove photo</button>
+          </div>
+          <label>Country of origin
+            <select id="profileCountry">
+              <option value="">Select a country</option>
+            </select>
+          </label>
+          <div id="profileCountryGrid" class="country-grid" aria-label="Country options"></div>
+          <button class="primary" type="submit">Save Profile</button>
+          <div id="profileSaveStatus" class="save-status" aria-live="polite"></div>
+        </form>
       </div>
     </section>
 
@@ -1133,6 +1287,7 @@
       </section>
 
       <section class="dashboard" aria-label="Stats dashboard">
+        <div id="statsProfileCard" class="stats-profile-card hidden"></div>
         <div class="filters">
           <label>Search
             <input id="search" type="search" placeholder="Map, deck, notes..." />
@@ -1259,6 +1414,16 @@
   <script>
     const sessionKey = "broken-arrow-session-token";
     const serverSaveUrl = "/api/matches";
+    const PROFILE_COUNTRIES = [
+      { code: "us", label: "United States", flag: "🇺🇸" },
+      { code: "eu", label: "European Union", flag: "🇪🇺" },
+      { code: "at", label: "Austria", flag: "🇦🇹" },
+      { code: "au", label: "Australia", flag: "🇦🇺" },
+      { code: "cn", label: "China", flag: "🇨🇳" },
+      { code: "ru", label: "Russia", flag: "🇷🇺" },
+      { code: "gb", label: "United Kingdom", flag: "🇬🇧" },
+      { code: "ie", label: "Ireland", flag: "🇮🇪" },
+    ];
 
     function getSharedUserId() {
       return new URLSearchParams(location.search).get("user");
@@ -1277,6 +1442,7 @@
       guestMode: false,
       browsePlayerFilter: "",
       browseMenuIndex: -1,
+      profileDraftPicture: "",
       authMode: "login",
     };
     let serverSaveChain = Promise.resolve();
@@ -1306,6 +1472,24 @@
     $("copyShareBtn").addEventListener("click", copyShareLink);
     $("adminCreateForm").addEventListener("submit", adminCreateUser);
     $("statsTabBtn").addEventListener("click", openStatsTab);
+    $("profileTabBtn").addEventListener("click", openProfileTab);
+    $("profileForm").addEventListener("submit", saveProfile);
+    $("profileCountry").addEventListener("change", () => {
+      syncProfileCountrySelection($("profileCountry").value);
+      renderProfilePreview();
+    });
+    $("profileCountryGrid").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-country]");
+      if (!button) return;
+      syncProfileCountrySelection(button.dataset.country);
+      renderProfilePreview();
+    });
+    $("profilePictureFile").addEventListener("change", handleProfilePictureUpload);
+    $("clearProfilePictureBtn").addEventListener("click", () => {
+      state.profileDraftPicture = "";
+      $("profilePictureFile").value = "";
+      renderProfilePreview();
+    });
     $("top10TabBtn").addEventListener("click", openTop10Tab);
     $("compareTabBtn").addEventListener("click", openCompareTab);
     $("adminTabBtn").addEventListener("click", openAdminTab);
@@ -1324,6 +1508,7 @@
       $(id).addEventListener("input", render);
     });
 
+    initProfileCountryOptions();
     initApp();
 
     function siteOrigin() {
@@ -1432,6 +1617,7 @@
         closeBrowsePlayerMenu();
         updatePlayerSearchVisibility();
         updateTop10TabVisibility();
+        updateProfileTabVisibility();
         hideAuthOverlay();
         openStatsTab();
         render();
@@ -1442,6 +1628,7 @@
         document.body.classList.remove("view-mode", "guest-mode");
         $("viewBanner").classList.add("hidden");
         updatePlayerSearchVisibility();
+        updateProfileTabVisibility();
         await enterGuestHome();
         openSignInOverlay(error.message || "Could not load shared profile.");
       }
@@ -1477,6 +1664,7 @@
         }
         updatePlayerSearchVisibility();
         updateTop10TabVisibility();
+        updateProfileTabVisibility();
         hideAuthOverlay();
         state.compareCache = {};
         populateCompareSelects();
@@ -1656,6 +1844,7 @@
       $("statsTabBtn").textContent = "My Stats";
       updatePlayerSearchVisibility();
       updateTop10TabVisibility();
+      updateProfileTabVisibility();
       initApp();
     }
 
@@ -1767,6 +1956,7 @@
       state.accountUser = state.user;
       updatePlayerSearchVisibility();
       updateTop10TabVisibility();
+      updateProfileTabVisibility();
       hideAuthOverlay();
       openStatsTab();
       $("currentUserName").textContent = state.user.name;
@@ -1795,6 +1985,14 @@
       }
     }
 
+    function updateProfileTabVisibility() {
+      const show = Boolean(state.token && state.accountUser && !state.guestMode && !state.viewMode);
+      $("profileTabBtn").classList.toggle("hidden", !show);
+      if (!show && !$("profilePanel").classList.contains("hidden")) {
+        openStatsTab();
+      }
+    }
+
     function updateTop10TabVisibility() {
       const show = state.guestMode || Boolean(state.token);
       $("top10TabBtn").classList.toggle("hidden", !show);
@@ -1805,6 +2003,7 @@
 
     function setActiveTab(tab) {
       $("statsTabBtn").classList.toggle("active", tab === "stats");
+      $("profileTabBtn").classList.toggle("active", tab === "profile");
       $("top10TabBtn").classList.toggle("active", tab === "top10");
       $("compareTabBtn").classList.toggle("active", tab === "compare");
       $("adminTabBtn").classList.toggle("active", tab === "admin");
@@ -1812,10 +2011,22 @@
 
     function openStatsTab() {
       $("adminPanel").classList.add("hidden");
+      $("profilePanel").classList.add("hidden");
       $("top10Panel").classList.add("hidden");
       $("comparePanel").classList.add("hidden");
       $("playerMain").classList.remove("hidden");
       setActiveTab("stats");
+    }
+
+    function openProfileTab() {
+      if (!state.accountUser || state.viewMode || state.guestMode) return;
+      $("adminPanel").classList.add("hidden");
+      $("top10Panel").classList.add("hidden");
+      $("comparePanel").classList.add("hidden");
+      $("playerMain").classList.add("hidden");
+      $("profilePanel").classList.remove("hidden");
+      setActiveTab("profile");
+      loadProfileForm();
     }
 
     async function openTop10Tab() {
@@ -1823,6 +2034,7 @@
         await loadPublicUsers();
       }
       $("adminPanel").classList.add("hidden");
+      $("profilePanel").classList.add("hidden");
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.add("hidden");
       $("top10Panel").classList.remove("hidden");
@@ -1832,6 +2044,7 @@
 
     function openCompareTab() {
       $("adminPanel").classList.add("hidden");
+      $("profilePanel").classList.add("hidden");
       $("top10Panel").classList.add("hidden");
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.remove("hidden");
@@ -1845,9 +2058,212 @@
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.add("hidden");
       $("top10Panel").classList.add("hidden");
+      $("profilePanel").classList.add("hidden");
       $("adminPanel").classList.remove("hidden");
       setActiveTab("admin");
       loadAdminDashboard();
+    }
+
+    function countryMeta(code) {
+      return PROFILE_COUNTRIES.find((country) => country.code === code) || null;
+    }
+
+    function profileDisplayUser() {
+      if (state.guestMode && !state.viewMode) return null;
+      if (state.viewMode) return state.user;
+      return state.accountUser || state.user;
+    }
+
+    function profileAvatarHtml(user, size = "md", pictureOverride) {
+      const name = user?.name || "Player";
+      const picture = pictureOverride ?? user?.profilePicture ?? "";
+      if (picture) {
+        return `<img src="${escapeHtml(picture)}" alt="${escapeHtml(name)} profile" class="profile-avatar-img ${size}" />`;
+      }
+      return `<div class="profile-avatar-fallback ${size}">${escapeHtml(name.slice(0, 1).toUpperCase())}</div>`;
+    }
+
+    function profileCountryHtml(code, emptyLabel = "No country set") {
+      const country = countryMeta(code);
+      if (!country) {
+        return `<span class="profile-country muted">${escapeHtml(emptyLabel)}</span>`;
+      }
+      return `<span class="profile-country"><span class="profile-country-flag" aria-hidden="true">${country.flag}</span>${escapeHtml(country.label)}</span>`;
+    }
+
+    function initProfileCountryOptions() {
+      const select = $("profileCountry");
+      const grid = $("profileCountryGrid");
+      const options = PROFILE_COUNTRIES.map((country) => `
+        <option value="${country.code}">${country.flag} ${country.label}</option>
+      `).join("");
+      select.insertAdjacentHTML("beforeend", options);
+      grid.innerHTML = PROFILE_COUNTRIES.map((country) => `
+        <button type="button" class="country-option" data-country="${country.code}">
+          <span class="profile-country-flag" aria-hidden="true">${country.flag}</span>
+          <span>${escapeHtml(country.label)}</span>
+        </button>
+      `).join("");
+    }
+
+    function syncProfileCountrySelection(code = "") {
+      $("profileCountry").value = code || "";
+      $("profileCountryGrid").querySelectorAll("button[data-country]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.country === code);
+      });
+    }
+
+    function loadProfileForm() {
+      const user = state.accountUser || state.user;
+      if (!user) return;
+      state.profileDraftPicture = user.profilePicture || "";
+      syncProfileCountrySelection(user.country || "");
+      $("profilePictureFile").value = "";
+      $("profileSaveStatus").textContent = "";
+      renderProfilePreview();
+    }
+
+    function renderProfilePreview() {
+      const user = state.accountUser || state.user;
+      if (!user) return;
+      const previewUser = {
+        ...user,
+        country: $("profileCountry").value || "",
+        profilePicture: state.profileDraftPicture || user.profilePicture || "",
+      };
+      const previewPicture = state.profileDraftPicture || user.profilePicture || "";
+      $("profileAvatarPreview").innerHTML = profileAvatarHtml(previewUser, "lg", previewPicture);
+      $("profilePreviewCard").innerHTML = `
+        ${profileAvatarHtml(previewUser, "lg", previewPicture)}
+        <div>
+          <h2>${escapeHtml(user.name)}</h2>
+          ${profileCountryHtml(previewUser.country, "Choose a country")}
+        </div>
+      `;
+    }
+
+    function renderStatsProfileCard() {
+      const card = $("statsProfileCard");
+      const user = profileDisplayUser();
+      if (!user) {
+        card.classList.add("hidden");
+        card.innerHTML = "";
+        return;
+      }
+      card.innerHTML = `
+        <div class="stats-profile-inner">
+          ${profileAvatarHtml(user, "lg")}
+          <div>
+            <h2>${escapeHtml(user.name)}</h2>
+            ${profileCountryHtml(user.country)}
+          </div>
+        </div>
+      `;
+      card.classList.remove("hidden");
+    }
+
+    function readImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Could not read image file"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function resizeProfileImage(dataUrl, maxSize = 256) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+          const width = Math.max(1, Math.round(image.width * scale));
+          const height = Math.max(1, Math.round(image.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        image.onerror = () => reject(new Error("Could not process image"));
+        image.src = dataUrl;
+      });
+    }
+
+    async function handleProfilePictureUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        $("profileSaveStatus").textContent = "Please choose an image file.";
+        $("profileSaveStatus").className = "save-status error";
+        return;
+      }
+      try {
+        let dataUrl = await readImageFile(file);
+        if (dataUrl.length > 280000) {
+          dataUrl = await resizeProfileImage(dataUrl);
+        }
+        if (dataUrl.length > 280000) {
+          throw new Error("Image is still too large. Try a smaller photo.");
+        }
+        state.profileDraftPicture = dataUrl;
+        renderProfilePreview();
+        $("profileSaveStatus").textContent = "Photo ready. Click Save Profile.";
+        $("profileSaveStatus").className = "save-status ok";
+      } catch (error) {
+        $("profileSaveStatus").textContent = error.message || "Could not load image";
+        $("profileSaveStatus").className = "save-status error";
+      }
+    }
+
+    function applyProfileUser(user) {
+      if (!user) return;
+      if (state.accountUser?.id === user.id) {
+        state.accountUser = { ...state.accountUser, ...user };
+        if (!state.viewMode) state.user = state.accountUser;
+      }
+      const publicIndex = state.publicUsers.findIndex((entry) => entry.id === user.id);
+      if (publicIndex >= 0) {
+        state.publicUsers[publicIndex] = { ...state.publicUsers[publicIndex], ...user };
+      }
+    }
+
+    async function saveProfile(event) {
+      event.preventDefault();
+      if (!state.accountUser) return;
+      const payload = {
+        country: $("profileCountry").value || "",
+      };
+      if (state.profileDraftPicture !== (state.accountUser.profilePicture || "")) {
+        if (state.profileDraftPicture) {
+          payload.profilePicture = state.profileDraftPicture;
+        } else {
+          payload.clearProfilePicture = true;
+        }
+      }
+      $("profileSaveStatus").textContent = "Saving profile...";
+      $("profileSaveStatus").className = "save-status";
+      try {
+        const response = await apiFetch("/api/users/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || "Could not save profile");
+        }
+        const user = await response.json();
+        applyProfileUser(user);
+        state.profileDraftPicture = user.profilePicture || "";
+        renderProfilePreview();
+        renderStatsProfileCard();
+        $("profileSaveStatus").textContent = "Profile saved.";
+        $("profileSaveStatus").className = "save-status ok";
+      } catch (error) {
+        $("profileSaveStatus").textContent = error.message || "Could not save profile";
+        $("profileSaveStatus").className = "save-status error";
+      }
     }
 
     function getPublicPlayerStats() {
@@ -2559,6 +2975,8 @@
     }
 
     function renderGuestHomePrompt() {
+      $("statsProfileCard").classList.add("hidden");
+      $("statsProfileCard").innerHTML = "";
       const message = `<div class="muted">Select a player from the search bar above to view their match history and stats.</div>`;
       $("summary").innerHTML = message;
       $("matchRows").innerHTML = `<tr><td colspan="10" class="muted">No player selected</td></tr>`;
@@ -2579,6 +2997,7 @@
         return;
       }
       const matches = filteredMatches();
+      renderStatsProfileCard();
       renderSummary(matches);
       renderTable(matches);
       renderInsightTables(matches);
