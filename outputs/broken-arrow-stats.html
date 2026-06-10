@@ -435,6 +435,7 @@
     .app.hidden,
     .admin-panel.hidden,
     .compare-panel.hidden,
+    .top10-panel.hidden,
     #playerMain.hidden {
       display: none !important;
     }
@@ -540,6 +541,17 @@
 
     .browse-player select {
       min-width: 180px;
+    }
+
+    .browse-player-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .browse-player-search input {
+      min-width: 220px;
     }
 
     #browsePublicBtn {
@@ -665,12 +677,19 @@
       font-weight: 700;
     }
 
-    .compare-panel {
+    .compare-panel,
+    .top10-panel {
       width: min(1440px, 100%);
       margin: 0 auto;
       padding: 18px;
       display: grid;
       gap: 16px;
+    }
+
+    .leaderboard-rank {
+      color: var(--accent);
+      font-weight: 700;
+      width: 2.5rem;
     }
 
     .compare-grid {
@@ -831,9 +850,16 @@
       </div>
       <div id="viewBanner" class="view-banner hidden">
         <span id="viewBannerText">Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
-        <label id="browsePlayerWrap" class="browse-player hidden">Player
-          <select id="browsePlayerSelect"></select>
-        </label>
+        <div id="browsePlayerWrap" class="browse-player hidden">
+          <div class="browse-player-row">
+            <label class="browse-player-search">Search player
+              <input id="browsePlayerSearch" type="search" placeholder="Type a username..." autocomplete="off" />
+            </label>
+            <label>Player
+              <select id="browsePlayerSelect"></select>
+            </label>
+          </div>
+        </div>
         <button id="viewSignInBtn" type="button" class="primary">Sign in to track your own matches</button>
       </div>
       <div class="account-bar owner-only">
@@ -847,6 +873,7 @@
       </div>
       <nav class="app-tabs" aria-label="Dashboard tabs">
         <button id="statsTabBtn" type="button" class="tab active">My Stats</button>
+        <button id="top10TabBtn" type="button" class="tab hidden">Top 10</button>
         <button id="compareTabBtn" type="button" class="tab">Compare</button>
         <button id="adminTabBtn" type="button" class="tab hidden">Admin</button>
       </nav>
@@ -905,6 +932,14 @@
           <tbody id="adminUserRows"></tbody>
         </table>
       </div>
+    </section>
+
+    <section id="top10Panel" class="top10-panel hidden" aria-label="Top players leaderboard">
+      <div>
+        <h2>Top 10 Players</h2>
+        <p class="subhead">Public profiles ranked by win rate. Only players with at least one logged match are listed.</p>
+      </div>
+      <div id="top10Table" class="admin-box admin-table-wrap"></div>
     </section>
 
     <section id="comparePanel" class="compare-panel hidden" aria-label="Compare players">
@@ -1174,6 +1209,7 @@
       compareCache: {},
       viewMode: false,
       guestMode: false,
+      browsePlayerFilter: "",
       authMode: "login",
     };
     let serverSaveChain = Promise.resolve();
@@ -1188,7 +1224,17 @@
     $("browsePublicBtn").addEventListener("click", enterGuestBrowse);
     $("browsePlayerSelect").addEventListener("change", () => {
       const userId = $("browsePlayerSelect").value;
+      const selected = state.publicUsers.find((user) => user.id === userId);
+      if (selected) $("browsePlayerSearch").value = selected.name;
+      state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
       if (userId) viewPublicPlayer(userId, { updateUrl: true });
+    });
+    $("browsePlayerSearch").addEventListener("input", handleBrowsePlayerSearch);
+    $("browsePlayerSearch").addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const match = filteredPublicUsers()[0];
+      if (match) viewPublicPlayer(match.id, { updateUrl: true });
     });
     $("viewSignInBtn").addEventListener("click", leavePublicView);
     $("logoutBtn").addEventListener("click", logout);
@@ -1196,6 +1242,7 @@
     $("copyShareBtn").addEventListener("click", copyShareLink);
     $("adminCreateForm").addEventListener("submit", adminCreateUser);
     $("statsTabBtn").addEventListener("click", openStatsTab);
+    $("top10TabBtn").addEventListener("click", openTop10Tab);
     $("compareTabBtn").addEventListener("click", openCompareTab);
     $("adminTabBtn").addEventListener("click", openAdminTab);
     $("comparePlayerA").addEventListener("change", renderCompare);
@@ -1314,7 +1361,12 @@
         $("viewSignInBtn").textContent = state.token
           ? "Back to my stats"
           : "Sign in to track your own matches";
+        if (state.guestMode) {
+          $("browsePlayerSearch").value = state.user.name;
+          state.browsePlayerFilter = "";
+        }
         populateBrowsePlayerSelect(userId);
+        updateGuestTabVisibility();
         hideAuthOverlay();
         openStatsTab();
         render();
@@ -1352,17 +1404,36 @@
       }
     }
 
+    function filteredPublicUsers() {
+      const query = (state.browsePlayerFilter || "").trim().toLowerCase();
+      const users = state.publicUsers || [];
+      if (!query) return users;
+      return users.filter((user) => user.name.toLowerCase().includes(query));
+    }
+
+    function handleBrowsePlayerSearch() {
+      state.browsePlayerFilter = $("browsePlayerSearch").value.trim();
+      populateBrowsePlayerSelect(state.user?.id);
+    }
+
     function populateBrowsePlayerSelect(selectedId = "") {
       const select = $("browsePlayerSelect");
       const currentId = selectedId || state.user?.id || "";
+      const users = filteredPublicUsers();
       if (!state.publicUsers.length) {
         select.innerHTML = `<option value="">No public players</option>`;
         return;
       }
-      select.innerHTML = state.publicUsers
+      if (!users.length) {
+        select.innerHTML = `<option value="">No players match "${escapeHtml(state.browsePlayerFilter)}"</option>`;
+        return;
+      }
+      select.innerHTML = users
         .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}</option>`)
         .join("");
-      if (currentId) select.value = currentId;
+      if (currentId && users.some((user) => user.id === currentId)) {
+        select.value = currentId;
+      }
     }
 
     function viewPublicPlayer(userId, options = {}) {
@@ -1385,7 +1456,10 @@
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
       $("browsePlayerWrap").classList.add("hidden");
+      $("browsePlayerSearch").value = "";
+      state.browsePlayerFilter = "";
       $("statsTabBtn").textContent = "My Stats";
+      updateGuestTabVisibility();
       initApp();
     }
 
@@ -1483,7 +1557,10 @@
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
       $("browsePlayerWrap").classList.add("hidden");
+      $("browsePlayerSearch").value = "";
+      state.browsePlayerFilter = "";
       $("statsTabBtn").textContent = "My Stats";
+      updateGuestTabVisibility();
       hideAuthOverlay();
       openStatsTab();
       $("currentUserName").textContent = state.user.name;
@@ -1512,21 +1589,41 @@
       }
     }
 
+    function updateGuestTabVisibility() {
+      $("top10TabBtn").classList.toggle("hidden", !state.guestMode);
+      if (!state.guestMode && !$("top10Panel").classList.contains("hidden")) {
+        openStatsTab();
+      }
+    }
+
     function setActiveTab(tab) {
       $("statsTabBtn").classList.toggle("active", tab === "stats");
+      $("top10TabBtn").classList.toggle("active", tab === "top10");
       $("compareTabBtn").classList.toggle("active", tab === "compare");
       $("adminTabBtn").classList.toggle("active", tab === "admin");
     }
 
     function openStatsTab() {
       $("adminPanel").classList.add("hidden");
+      $("top10Panel").classList.add("hidden");
       $("comparePanel").classList.add("hidden");
       $("playerMain").classList.remove("hidden");
       setActiveTab("stats");
     }
 
+    function openTop10Tab() {
+      if (!state.guestMode) return;
+      $("adminPanel").classList.add("hidden");
+      $("playerMain").classList.add("hidden");
+      $("comparePanel").classList.add("hidden");
+      $("top10Panel").classList.remove("hidden");
+      setActiveTab("top10");
+      renderTop10();
+    }
+
     function openCompareTab() {
       $("adminPanel").classList.add("hidden");
+      $("top10Panel").classList.add("hidden");
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.remove("hidden");
       setActiveTab("compare");
@@ -1538,9 +1635,68 @@
       if (state.user?.role !== "admin" || state.viewMode) return;
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.add("hidden");
+      $("top10Panel").classList.add("hidden");
       $("adminPanel").classList.remove("hidden");
       setActiveTab("admin");
       loadAdminDashboard();
+    }
+
+    function getPublicPlayerStats() {
+      const publicMatches = state.publicMatches || [];
+      return (state.publicUsers || []).map((user) => {
+        const userMatches = publicMatches.filter((match) => match.userId === user.id);
+        const wins = userMatches.filter((match) => match.result === "Win").length;
+        const total = userMatches.length;
+        return {
+          id: user.id,
+          name: user.name,
+          total,
+          wins,
+          winRate: total ? wins / total : 0,
+        };
+      });
+    }
+
+    function getTop10Players() {
+      return getPublicPlayerStats()
+        .filter((player) => player.total > 0)
+        .sort((a, b) => b.winRate - a.winRate || b.total - a.total || a.name.localeCompare(b.name))
+        .slice(0, 10);
+    }
+
+    function renderTop10() {
+      const target = $("top10Table");
+      const rows = getTop10Players();
+      if (!rows.length) {
+        target.innerHTML = `<div class="muted">No ranked players yet. Public profiles need at least one logged match.</div>`;
+        return;
+      }
+      target.innerHTML = `
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Matches</th>
+              <th>Record</th>
+              <th>Win %</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row, index) => `
+              <tr>
+                <td class="leaderboard-rank">${index + 1}</td>
+                <td>${escapeHtml(row.name)}</td>
+                <td>${row.total}</td>
+                <td>${row.wins}-${row.total - row.wins}</td>
+                <td>${pct(row.winRate)}</td>
+                <td><button class="icon-btn" type="button" onclick="viewPublicPlayer('${row.id}', { updateUrl: true })">View</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
     }
 
     function comparePlayerOptions() {
@@ -2240,17 +2396,11 @@
 
     function renderPublicUsers() {
       const target = $("userStats");
-      const publicMatches = state.publicMatches || [];
       if (!state.publicUsers.length) {
         target.innerHTML = `<div class="muted">No public profiles yet</div>`;
         return;
       }
-      const rows = state.publicUsers.map((user) => {
-        const userMatches = publicMatches.filter((match) => match.userId === user.id);
-        const wins = userMatches.filter((match) => match.result === "Win").length;
-        const total = userMatches.length;
-        return { id: user.id, name: user.name, total, wins };
-      }).sort((a, b) => b.total - a.total);
+      const rows = getPublicPlayerStats().sort((a, b) => b.total - a.total);
       target.innerHTML = `
         <table class="mini-table">
           <thead><tr><th>Player</th><th>Matches</th><th>Win %</th><th></th></tr></thead>
