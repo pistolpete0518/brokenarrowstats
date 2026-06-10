@@ -530,6 +530,22 @@
       color: var(--accent);
     }
 
+    .browse-player {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+
+    .browse-player select {
+      min-width: 180px;
+    }
+
+    #browsePublicBtn {
+      width: 100%;
+    }
+
     body.view-mode .owner-only {
       display: none !important;
     }
@@ -788,6 +804,7 @@
         <div id="authError" class="auth-error" aria-live="polite"></div>
         <button id="authSubmitBtn" class="primary" type="submit">Sign In</button>
       </form>
+      <button id="browsePublicBtn" type="button" class="ghost">Browse public stats without signing in</button>
       <div class="auth-switch">
         <span id="authSwitchText">Need an account?</span>
         <button id="authModeBtn" type="button">Create one</button>
@@ -813,8 +830,11 @@
         </div>
       </div>
       <div id="viewBanner" class="view-banner hidden">
-        <span>Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
-        <button id="viewSignInBtn" type="button" class="primary">Sign in for your account</button>
+        <span id="viewBannerText">Viewing <strong id="viewBannerName">Player</strong>'s public stats</span>
+        <label id="browsePlayerWrap" class="browse-player hidden">Player
+          <select id="browsePlayerSelect"></select>
+        </label>
+        <button id="viewSignInBtn" type="button" class="primary">Sign in to track your own matches</button>
       </div>
       <div class="account-bar owner-only">
         <div class="user-pill">Signed in as <strong id="currentUserName">Player</strong></div>
@@ -1153,6 +1173,7 @@
       adminUsers: [],
       compareCache: {},
       viewMode: false,
+      guestMode: false,
       authMode: "login",
     };
     let serverSaveChain = Promise.resolve();
@@ -1164,6 +1185,11 @@
 
     $("authForm").addEventListener("submit", handleAuthSubmit);
     $("authModeBtn").addEventListener("click", toggleAuthMode);
+    $("browsePublicBtn").addEventListener("click", enterGuestBrowse);
+    $("browsePlayerSelect").addEventListener("change", () => {
+      const userId = $("browsePlayerSelect").value;
+      if (userId) viewPublicPlayer(userId, { updateUrl: true });
+    });
     $("viewSignInBtn").addEventListener("click", leavePublicView);
     $("logoutBtn").addEventListener("click", logout);
     $("publicProfile").addEventListener("change", updatePublicProfile);
@@ -1238,6 +1264,10 @@
         await enterPublicView(sharedUserId);
         return;
       }
+      if (new URLSearchParams(location.search).get("browse") === "1") {
+        await enterGuestBrowse();
+        return;
+      }
       state.token = localStorage.getItem(sessionKey) || "";
       if (!state.token) {
         showAuthOverlay();
@@ -1262,7 +1292,7 @@
       }
     }
 
-    async function enterPublicView(userId) {
+    async function enterPublicView(userId, options = {}) {
       try {
         const [matchesResponse, publicResponse] = await Promise.all([
           fetch(`/api/matches?userId=${encodeURIComponent(userId)}`, { cache: "no-store" }),
@@ -1275,27 +1305,87 @@
         state.user = state.publicUsers.find((user) => user.id === userId) || { id: userId, name: "Player", public: true };
         state.matches = await matchesResponse.json();
         state.viewMode = true;
+        state.guestMode = options.guestMode ?? state.guestMode ?? !state.token;
         document.body.classList.add("view-mode");
         $("viewBannerName").textContent = state.user.name;
         $("viewBanner").classList.remove("hidden");
+        $("browsePlayerWrap").classList.toggle("hidden", !state.guestMode);
+        $("statsTabBtn").textContent = state.guestMode ? "Player Stats" : "My Stats";
+        $("viewSignInBtn").textContent = state.token
+          ? "Back to my stats"
+          : "Sign in to track your own matches";
+        populateBrowsePlayerSelect(userId);
         hideAuthOverlay();
+        openStatsTab();
         render();
         populateCompareSelects();
       } catch (error) {
         state.viewMode = false;
+        state.guestMode = false;
         document.body.classList.remove("view-mode");
         $("viewBanner").classList.add("hidden");
+        $("browsePlayerWrap").classList.add("hidden");
         showAuthOverlay();
         $("authError").textContent = error.message || "Could not load shared profile.";
       }
     }
 
+    async function enterGuestBrowse() {
+      try {
+        await loadPublicUsers();
+        if (!state.publicUsers.length) {
+          showAuthOverlay();
+          $("authError").textContent = "No public profiles are available yet. Sign in and enable Public profile to share stats.";
+          $("authError").className = "save-status error";
+          return;
+        }
+        state.guestMode = true;
+        state.token = "";
+        state.user = null;
+        clearSession();
+        history.replaceState({}, "", `${location.pathname}?browse=1`);
+        await enterPublicView(state.publicUsers[0].id, { guestMode: true });
+      } catch (error) {
+        showAuthOverlay();
+        $("authError").textContent = error.message || "Could not load public stats.";
+        $("authError").className = "save-status error";
+      }
+    }
+
+    function populateBrowsePlayerSelect(selectedId = "") {
+      const select = $("browsePlayerSelect");
+      const currentId = selectedId || state.user?.id || "";
+      if (!state.publicUsers.length) {
+        select.innerHTML = `<option value="">No public players</option>`;
+        return;
+      }
+      select.innerHTML = state.publicUsers
+        .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}</option>`)
+        .join("");
+      if (currentId) select.value = currentId;
+    }
+
+    function viewPublicPlayer(userId, options = {}) {
+      if (!userId) return;
+      if (options.updateUrl) {
+        const params = state.guestMode
+          ? new URLSearchParams({ browse: "1", user: userId })
+          : new URLSearchParams({ user: userId });
+        history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
+      }
+      enterPublicView(userId, { guestMode: state.guestMode });
+    }
+    window.viewPublicPlayer = viewPublicPlayer;
+
     function leavePublicView() {
       history.replaceState({}, "", location.pathname);
       state.viewMode = false;
+      state.guestMode = false;
       state.matches = [];
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
+      $("browsePlayerWrap").classList.add("hidden");
+      $("statsTabBtn").textContent = "My Stats";
       initApp();
     }
 
@@ -1323,7 +1413,7 @@
       state.authMode = mode;
       $("authTitle").textContent = mode === "login" ? "Sign In" : "Create Account";
       $("authSubtitle").textContent = mode === "login"
-        ? "Log in to track your matches on BrokenArrowStats. Each player has their own account and stats."
+        ? "Log in to track your matches on BrokenArrowStats, or browse public player stats without an account."
         : "Create a personal account with a username and password. Your match history stays private unless you enable a public profile.";
       $("authSubmitBtn").textContent = mode === "login" ? "Sign In" : "Create Account";
       $("authSwitchText").textContent = mode === "login" ? "Need an account?" : "Already have an account?";
@@ -1389,8 +1479,11 @@
 
     async function enterApp() {
       state.viewMode = false;
+      state.guestMode = false;
       document.body.classList.remove("view-mode");
       $("viewBanner").classList.add("hidden");
+      $("browsePlayerWrap").classList.add("hidden");
+      $("statsTabBtn").textContent = "My Stats";
       hideAuthOverlay();
       openStatsTab();
       $("currentUserName").textContent = state.user.name;
@@ -1433,7 +1526,6 @@
     }
 
     function openCompareTab() {
-      if (state.viewMode) return;
       $("adminPanel").classList.add("hidden");
       $("playerMain").classList.add("hidden");
       $("comparePanel").classList.remove("hidden");
@@ -2157,17 +2249,18 @@
         const userMatches = publicMatches.filter((match) => match.userId === user.id);
         const wins = userMatches.filter((match) => match.result === "Win").length;
         const total = userMatches.length;
-        return { name: user.name, total, wins };
+        return { id: user.id, name: user.name, total, wins };
       }).sort((a, b) => b.total - a.total);
       target.innerHTML = `
         <table class="mini-table">
-          <thead><tr><th>Player</th><th>Matches</th><th>Win %</th></tr></thead>
+          <thead><tr><th>Player</th><th>Matches</th><th>Win %</th><th></th></tr></thead>
           <tbody>
             ${rows.map((row) => `
               <tr>
                 <td>${escapeHtml(row.name)}</td>
                 <td>${row.total}</td>
                 <td>${row.total ? pct(row.wins / row.total) : "0%"}</td>
+                <td><button class="icon-btn" type="button" onclick="viewPublicPlayer('${row.id}', { updateUrl: true })">View</button></td>
               </tr>
             `).join("")}
           </tbody>
