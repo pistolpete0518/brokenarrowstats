@@ -261,6 +261,53 @@ def public_db(db):
     }
 
 
+def apply_user_matches(db, user_id, matches, replace=False):
+    if not isinstance(matches, list):
+        raise ValueError("Expected matches list")
+
+    if replace:
+        db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
+        if not matches:
+            return 0
+
+    existing = {
+        match["id"]: match
+        for match in db["matches"]
+        if match.get("userId") == user_id and match.get("id")
+    }
+    applied = 0
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        match = dict(match)
+        match.setdefault("id", str(uuid.uuid4()))
+        match["userId"] = user_id
+        match["updatedAt"] = match.get("updatedAt") or now()
+        match_id = match["id"]
+        current = existing.get(match_id)
+        if not current or str(match.get("updatedAt", "")) >= str(current.get("updatedAt", "")):
+            existing[match_id] = match
+            applied += 1
+
+    db["matches"] = [
+        match for match in db["matches"]
+        if match.get("userId") != user_id
+    ] + list(existing.values())
+    return applied
+
+
+def parse_matches_payload(body):
+    if isinstance(body, list):
+        return body, False
+    if isinstance(body, dict):
+        if body.get("replace"):
+            matches = body.get("matches", [])
+            return matches if isinstance(matches, list) else [], True
+        matches = body.get("matches", [])
+        return matches if isinstance(matches, list) else [], False
+    return [], False
+
+
 def can_read_user_matches(db, user_id, auth_user):
     target = find_user_by_id(db, user_id)
     if not target:
@@ -453,17 +500,9 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
                     if not auth_user:
                         raise ValueError("Unauthorized")
                     user_id = auth_user["id"]
-                    matches = body if isinstance(body, list) else body.get("matches", [])
-                    if not isinstance(matches, list):
-                        raise ValueError("Expected matches list")
-                    db["matches"] = [match for match in db["matches"] if match.get("userId") != user_id]
-                    for match in matches:
-                        if isinstance(match, dict):
-                            match.setdefault("id", str(uuid.uuid4()))
-                            match["userId"] = user_id
-                            match["updatedAt"] = match.get("updatedAt") or now()
-                            db["matches"].append(match)
-                    return {"ok": True, "count": len(matches)}
+                    matches, replace = parse_matches_payload(body)
+                    count = apply_user_matches(db, user_id, matches, replace=replace)
+                    return {"ok": True, "count": count}
 
                 self.send_json(update_db(mutate))
                 return

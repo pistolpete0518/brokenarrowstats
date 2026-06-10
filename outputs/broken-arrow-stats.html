@@ -1155,6 +1155,7 @@
       viewMode: false,
       authMode: "login",
     };
+    let serverSaveChain = Promise.resolve();
 
     const $ = (id) => document.getElementById(id);
     const today = new Date().toISOString().slice(0, 10);
@@ -1363,14 +1364,17 @@
       $("currentUserName").textContent = state.user.name;
       $("publicProfile").checked = Boolean(state.user.public);
       updateAdminTabVisibility();
-      state.matches = loadMatches();
+      const localMatches = loadMatches();
       restoreDraft();
-      render();
       try {
-        await Promise.all([loadServerMatches(), loadPublicUsers()]);
+        await syncMatchesFromServer(localMatches);
+        await loadPublicUsers();
         state.compareCache = {};
         populateCompareSelects();
+        render();
       } catch {
+        state.matches = localMatches;
+        render();
         showSaveStatus("Signed in. Server sync will retry on next save.", "error");
       }
     }
@@ -1827,11 +1831,9 @@
       }
     }
 
-    function persist() {
+    function persistLocal() {
       try {
         localStorage.setItem(storeKey(), JSON.stringify(state.matches));
-        saveToServer();
-        showSaveStatus("Saved locally, syncing file...", "ok");
         return true;
       } catch {
         showSaveStatus("Save failed: browser storage is full or blocked", "error");
@@ -1839,42 +1841,74 @@
       }
     }
 
-    async function loadServerMatches() {
-      if (!state.user) return;
+    function persist(options = {}) {
+      if (!persistLocal()) return false;
+      queueServerSave(options);
+      if (!options.silent) showSaveStatus("Saved locally, syncing to server...", "ok");
+      return true;
+    }
+
+    function queueServerSave(options = {}) {
+      serverSaveChain = serverSaveChain
+        .then(() => flushServerSave(options))
+        .catch(() => false);
+      return serverSaveChain;
+    }
+
+    async function syncMatchesFromServer(localMatches = []) {
+      if (!state.user) {
+        state.matches = localMatches;
+        return;
+      }
+      await serverSaveChain;
       try {
         const response = await fetch(`${serverSaveUrl}?userId=${encodeURIComponent(state.user.id)}`, {
           cache: "no-store",
           headers: authHeaders(),
         });
-        if (response.status === 401) return;
-        if (!response.ok) return;
+        if (response.status === 401) {
+          state.matches = localMatches;
+          return;
+        }
+        if (!response.ok) throw new Error("Could not load saved matches");
         const serverMatches = await response.json();
-        if (!Array.isArray(serverMatches)) return;
-        if (serverMatches.length) {
-          state.matches = mergeMatches(state.matches, serverMatches);
-          localStorage.setItem(storeKey(), JSON.stringify(state.matches));
-          render();
+        const merged = mergeMatches(localMatches, Array.isArray(serverMatches) ? serverMatches : []);
+        state.matches = merged;
+        persistLocal();
+        const serverIds = new Set((Array.isArray(serverMatches) ? serverMatches : []).map((match) => match.id));
+        const needsPush = merged.length > 0 && (
+          !serverIds.size || merged.some((match) => !serverIds.has(match.id))
+        );
+        if (needsPush) {
+          await queueServerSave({ replace: true, silent: true });
+          showSaveStatus("Loaded and synced saved matches", "ok");
+        } else if (merged.length) {
           showSaveStatus("Loaded saved matches", "ok");
-        } else if (state.matches.length) {
-          saveToServer();
         }
       } catch {
+        state.matches = localMatches;
         showSaveStatus("Using browser save only", "");
       }
     }
 
-    async function saveToServer() {
-      if (!state.user) return;
+    async function flushServerSave(options = {}) {
+      if (!state.user) return false;
+      const payload = JSON.parse(JSON.stringify(state.matches));
+      const body = options.replace
+        ? JSON.stringify({ replace: true, matches: payload })
+        : JSON.stringify(payload);
       try {
         const response = await apiFetch(serverSaveUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(state.matches),
+          body,
         });
         if (!response.ok) throw new Error("Server save failed");
-        showSaveStatus("Saved to server", "ok");
+        if (!options.silent) showSaveStatus("Saved to server", "ok");
+        return true;
       } catch {
-        showSaveStatus("Saved in browser, server sync failed", "error");
+        if (!options.silent) showSaveStatus("Saved in browser, server sync failed", "error");
+        return false;
       }
     }
 
@@ -1910,18 +1944,18 @@
       return data;
     }
 
-    function saveMatch(event) {
+    async function saveMatch(event) {
       event.preventDefault();
       const match = readForm();
       const index = state.matches.findIndex((item) => item.id === match.id);
       if (index >= 0) state.matches[index] = match;
       else state.matches.push(match);
-      if (persist()) {
-        clearDraft();
-        resetForm();
-        showSaveStatus("Match saved", "ok");
-        render();
-      }
+      if (!persistLocal()) return;
+      clearDraft();
+      resetForm();
+      render();
+      const synced = await queueServerSave({ replace: true });
+      showSaveStatus(synced ? "Match saved" : "Match saved in browser, server sync failed", synced ? "ok" : "error");
     }
 
     function resetForm() {
@@ -1980,19 +2014,21 @@
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
-    function deleteMatch(id) {
+    async function deleteMatch(id) {
       state.matches = state.matches.filter((item) => item.id !== id);
-      persist();
+      if (!persistLocal()) return;
       render();
+      await queueServerSave({ replace: true });
     }
 
-    function clearMatches() {
+    async function clearMatches() {
       if (!state.matches.length) return;
       if (!confirm("Delete all saved BrokenArrowStats matches?")) return;
       state.matches = [];
-      persist();
+      if (!persistLocal()) return;
       resetForm();
       render();
+      await queueServerSave({ replace: true });
     }
 
     function filteredMatches() {
