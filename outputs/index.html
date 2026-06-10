@@ -922,11 +922,6 @@
               <select id="mode">
                 <option>Public match</option>
                 <option>Private match</option>
-                <option>1v1</option>
-                <option>2v2</option>
-                <option>3v3</option>
-                <option>4v4</option>
-                <option>5v5</option>
               </select>
             </label>
           </div>
@@ -1045,11 +1040,6 @@
               <option value="">All</option>
               <option>Public match</option>
               <option>Private match</option>
-              <option>1v1</option>
-              <option>2v2</option>
-              <option>3v3</option>
-              <option>4v4</option>
-              <option>5v5</option>
             </select>
           </label>
           <label>Map
@@ -2320,11 +2310,11 @@
 
     function loadSample() {
       const sample = [
-        ["2026-06-02", "2v2", "Win", "USA", "Russia", "Parnu", "Airborne opener", 48, 29, 2850, 38, 76, 62, "Strong heli timing. Keep AA screened earlier."],
-        ["2026-06-03", "1v1", "Loss", "Russia", "USA", "River", "Armored grind", 31, 42, 1900, 44, 58, 41, "Lost mid bridge after overbuying tanks."],
-        ["2026-06-04", "3v3", "Win", "USA", "Russia", "Airbase", "Mech support", 64, 47, 3300, 51, 82, 70, "Good recon discipline. Artillery paid off."],
+        ["2026-06-02", "Public match", "Win", "USA", "Russia", "Parnu", "Airborne opener", 48, 29, 2850, 38, 76, 62, "Strong heli timing. Keep AA screened earlier."],
+        ["2026-06-03", "Private match", "Loss", "Russia", "USA", "River", "Armored grind", 31, 42, 1900, 44, 58, 41, "Lost mid bridge after overbuying tanks."],
+        ["2026-06-04", "Public match", "Win", "USA", "Russia", "Airbase", "Mech support", 64, 47, 3300, 51, 82, 70, "Good recon discipline. Artillery paid off."],
         ["2026-06-05", "Public match", "Draw", "Russia", "USA", "Baltisk", "Air defense net", 77, 74, 2650, 57, 49, 53, "Held flank, needed more objective pressure."],
-        ["2026-06-06", "2v2", "Win", "USA", "Russia", "Klaipeda", "Marine push", 52, 35, 3010, 36, 71, 67, "Fast infantry pressure set the pace."],
+        ["2026-06-06", "Private match", "Win", "USA", "Russia", "Klaipeda", "Marine push", 52, 35, 3010, 36, 71, 67, "Fast infantry pressure set the pace."],
       ].map(([date, mode, result, faction, opponentFaction, map, deck, kills, losses, score, duration, apm, objective, notes]) => ({
         id: crypto.randomUUID(), date, mode, result, faction, opponentFaction, map, deck, kills, losses, score, duration, apm, objective, notes, updatedAt: new Date().toISOString()
       }));
