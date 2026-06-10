@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Broken Arrow Stats</title>
+  <title>BrokenArrowStats</title>
   <style>
     :root {
       color-scheme: dark;
@@ -585,7 +585,7 @@
   <div id="authOverlay" class="auth-overlay">
     <div class="auth-card">
       <h2 id="authTitle">Sign In</h2>
-      <p id="authSubtitle">Log in to track your Broken Arrow matches. Each player has their own account and stats.</p>
+      <p id="authSubtitle">Log in to track your matches on BrokenArrowStats. Each player has their own account and stats.</p>
       <form id="authForm">
         <div class="grid-2">
           <label>Username
@@ -612,7 +612,7 @@
     <header>
       <div class="topbar">
         <div>
-          <h1>Broken Arrow Stats</h1>
+          <h1>BrokenArrowStats</h1>
           <div class="subhead">Match log and performance dashboard</div>
         </div>
         <div class="actions owner-only">
@@ -1023,7 +1023,7 @@
       state.authMode = mode;
       $("authTitle").textContent = mode === "login" ? "Sign In" : "Create Account";
       $("authSubtitle").textContent = mode === "login"
-        ? "Log in to track your Broken Arrow matches. Each player has their own account and stats."
+        ? "Log in to track your matches on BrokenArrowStats. Each player has their own account and stats."
         : "Create a personal account with a username and password. Your match history stays private unless you enable a public profile.";
       $("authSubmitBtn").textContent = mode === "login" ? "Sign In" : "Create Account";
       $("authSwitchText").textContent = mode === "login" ? "Need an account?" : "Already have an account?";
@@ -1315,7 +1315,7 @@
 
     function clearMatches() {
       if (!state.matches.length) return;
-      if (!confirm("Delete all saved Broken Arrow matches?")) return;
+      if (!confirm("Delete all saved BrokenArrowStats matches?")) return;
       state.matches = [];
       persist();
       resetForm();
@@ -1697,7 +1697,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `broken-arrow-stats-${today}.csv`;
+      link.download = `BrokenArrowStats-${today}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     }

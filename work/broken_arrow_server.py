@@ -323,5 +323,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8787"))
     ROOT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), BrokenArrowHandler)
-    print(f"Broken Arrow stats server running on http://{host}:{port}/")
+    print(f"BrokenArrowStats server running on http://{host}:{port}/")
     server.serve_forever()

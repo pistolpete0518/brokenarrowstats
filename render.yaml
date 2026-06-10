@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: broken-arrow-stats
+    name: brokenarrowstats
     runtime: python
     plan: free
     buildCommand: pip install --upgrade pip
