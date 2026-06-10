@@ -1156,6 +1156,7 @@
       authMode: "login",
     };
     let serverSaveChain = Promise.resolve();
+    let publicSiteUrl = "";
 
     const $ = (id) => document.getElementById(id);
     const today = new Date().toISOString().slice(0, 10);
@@ -1188,6 +1189,21 @@
 
     initApp();
 
+    function siteOrigin() {
+      return publicSiteUrl || location.origin;
+    }
+
+    async function loadAppConfig() {
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (!response.ok) return;
+        const config = await response.json();
+        publicSiteUrl = String(config.publicSiteUrl || "").replace(/\/$/, "");
+      } catch {
+        publicSiteUrl = "";
+      }
+    }
+
     function storeKey() {
       return `broken-arrow-stats-v1-${state.user?.id || "guest"}`;
     }
@@ -1216,6 +1232,7 @@
     }
 
     async function initApp() {
+      await loadAppConfig();
       const sharedUserId = getSharedUserId();
       if (sharedUserId) {
         await enterPublicView(sharedUserId);
@@ -1816,7 +1833,7 @@
         showSaveStatus("Enable public profile to share stats", "error");
         return;
       }
-      const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(state.user.id)}`;
+      const url = `${siteOrigin()}${location.pathname}?user=${encodeURIComponent(state.user.id)}`;
       try {
         await navigator.clipboard.writeText(url);
         showSaveStatus("Share link copied", "ok");

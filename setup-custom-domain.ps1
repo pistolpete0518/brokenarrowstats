@@ -1,0 +1,40 @@
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$Domain
+)
+
+$ErrorActionPreference = "Stop"
+$domain = $Domain.Trim().ToLower() -replace "^https?://", "" -replace "/.*$", ""
+$publicUrl = "https://$domain"
+
+Write-Host "BrokenArrowStats custom domain setup"
+Write-Host "Domain: $domain"
+Write-Host ""
+Write-Host "Step 1 - Render dashboard"
+Write-Host "  Open: https://dashboard.render.com"
+Write-Host "  Select service: brokenarrowstats"
+Write-Host "  Settings -> Custom Domains -> Add Custom Domain -> $domain"
+Write-Host ""
+Write-Host "Step 2 - DNS at your domain provider"
+Write-Host "  Add a CNAME record:"
+Write-Host "    Name/Host: $(if ($domain -match '^www\.') { 'www' } elseif ($domain.Contains('.')) { ($domain -split '\.')[0] } else { '@' })"
+Write-Host "    Target/Value: brokenarrowstats.onrender.com"
+Write-Host "  Remove any AAAA records for this hostname."
+Write-Host ""
+Write-Host "Step 3 - Render environment variable"
+Write-Host "  In Render -> brokenarrowstats -> Environment, add:"
+Write-Host "    PUBLIC_SITE_URL = $publicUrl"
+Write-Host "  Save and wait for redeploy."
+Write-Host ""
+Write-Host "Step 4 - Verify in Render"
+Write-Host "  Click Verify next to the custom domain."
+Write-Host "  Then open: $publicUrl"
+Write-Host ""
+Write-Host "Step 5 - Link from your main website"
+Write-Host "  Add a link or button on your site:"
+Write-Host "    <a href=`"$publicUrl`">BrokenArrowStats</a>"
+Write-Host ""
+Write-Host "Optional: redirect old Render URL to your domain automatically."
+Write-Host "PUBLIC_SITE_URL does that once DNS is verified."
+
+Start-Process "https://dashboard.render.com"

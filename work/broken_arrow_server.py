@@ -19,6 +19,16 @@ PBKDF2_ROUNDS = 120_000
 _DB_LOCK = threading.Lock()
 
 
+def public_site_url():
+    url = os.environ.get("PUBLIC_SITE_URL", "").strip().rstrip("/")
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -301,10 +311,28 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
             return None
         return auth_user
 
+    def maybe_redirect_public_site(self, path):
+        canonical = public_site_url()
+        if not canonical:
+            return False
+        host = self.headers.get("Host", "").split(":")[0].lower()
+        canonical_host = urlparse(canonical).netloc.lower()
+        if not host or not canonical_host or host == canonical_host:
+            return False
+        if not host.endswith(".onrender.com"):
+            return False
+        target = f"{canonical}{path}"
+        self.send_response(301)
+        self.send_header("Location", target)
+        self.end_headers()
+        return True
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
+        if not path.startswith("/api/") and self.maybe_redirect_public_site(parsed.path + (f"?{parsed.query}" if parsed.query else "")):
+            return
         db = read_db()
 
         if path == "/api/db":
@@ -318,12 +346,21 @@ class BrokenArrowHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path == "/api/config":
+            canonical = public_site_url()
+            self.send_json({
+                "publicSiteUrl": canonical or "",
+                "defaultUrl": f"https://{self.headers.get('Host', 'brokenarrowstats.onrender.com')}",
+            })
+            return
+
         if path == "/api/health":
             self.send_json({
                 "ok": True,
                 "storage": storage_backend(),
                 "users": len(db["users"]),
                 "matches": len(db["matches"]),
+                "publicSiteUrl": public_site_url() or "",
             })
             return
 

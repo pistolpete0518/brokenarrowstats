@@ -6,6 +6,7 @@ services:
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python work/broken_arrow_server.py
     healthCheckPath: /
+    # Add your domain here after you own one, e.g. domains: [stats.example.com]
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.0"
@@ -18,4 +19,6 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_SITE_URL
         sync: false
