@@ -532,6 +532,51 @@
       color: var(--accent);
     }
 
+    .welcome-hero {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 28px 22px;
+      border-radius: calc(var(--radius) + 2px);
+      border: 1px solid rgba(255, 255, 255, .14);
+      background: linear-gradient(135deg, #0a0a0a 0%, #1e4f9a 48%, #f7f7f7 100%);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .welcome-message {
+      margin: 0;
+      font-style: italic;
+      font-size: clamp(2rem, 5.5vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+    }
+
+    .welcome-tagline {
+      margin: 12px 0 0;
+      font-style: italic;
+      font-size: clamp(1rem, 2.4vw, 1.45rem);
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .welcome-white {
+      color: #ffffff;
+      text-shadow: 0 2px 16px rgba(0, 0, 0, .35);
+    }
+
+    .welcome-blue {
+      color: #8ec5ff;
+      text-shadow: 0 2px 18px rgba(15, 40, 80, .55);
+    }
+
+    .welcome-black {
+      color: #101010;
+      background: rgba(255, 255, 255, .9);
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
     .browse-player {
       display: flex;
       align-items: center;
@@ -1059,6 +1104,15 @@
         <button id="copyShareBtn" type="button">Copy Share Link</button>
         <button id="logoutBtn" type="button" class="ghost">Log Out</button>
       </div>
+      <section id="welcomeHero" class="welcome-hero hidden" aria-label="Welcome">
+        <p class="welcome-message">
+          <em><span class="welcome-white">Welcome to </span><span class="welcome-blue">BrokenArrowStats</span></em>
+        </p>
+        <p class="welcome-tagline">
+          <em><span class="welcome-black">Track your matches</span> · <span class="welcome-blue">compare players</span> · <span class="welcome-white">climb the Top 10</span></em>
+        </p>
+      </section>
+
       <nav class="app-tabs" aria-label="Dashboard tabs">
         <button id="statsTabBtn" type="button" class="tab active">My Stats</button>
         <button id="profileTabBtn" type="button" class="tab hidden owner-only">Profile</button>
@@ -1993,6 +2047,12 @@
       }
     }
 
+    function updateWelcomeVisibility() {
+      const onTop10 = !$("top10Panel").classList.contains("hidden");
+      const onGuestHome = state.guestMode && !state.viewMode;
+      $("welcomeHero").classList.toggle("hidden", !(onTop10 || onGuestHome));
+    }
+
     function updateTop10TabVisibility() {
       const show = state.guestMode || Boolean(state.token);
       $("top10TabBtn").classList.toggle("hidden", !show);
@@ -2016,6 +2076,7 @@
       $("comparePanel").classList.add("hidden");
       $("playerMain").classList.remove("hidden");
       setActiveTab("stats");
+      updateWelcomeVisibility();
     }
 
     function openProfileTab() {
@@ -2027,6 +2088,7 @@
       $("profilePanel").classList.remove("hidden");
       setActiveTab("profile");
       loadProfileForm();
+      updateWelcomeVisibility();
     }
 
     async function openTop10Tab() {
@@ -2040,6 +2102,7 @@
       $("top10Panel").classList.remove("hidden");
       setActiveTab("top10");
       renderTop10();
+      updateWelcomeVisibility();
     }
 
     function openCompareTab() {
@@ -2051,6 +2114,7 @@
       setActiveTab("compare");
       populateCompareSelects();
       renderCompare();
+      updateWelcomeVisibility();
     }
 
     function openAdminTab() {
@@ -2062,6 +2126,7 @@
       $("adminPanel").classList.remove("hidden");
       setActiveTab("admin");
       loadAdminDashboard();
+      updateWelcomeVisibility();
     }
 
     function countryMeta(code) {
